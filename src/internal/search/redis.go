@@ -11,7 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
-	"github.com/casapps/casgists/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/database/models"
 )
 
 // RedisProvider implements search using Redis/Valkey

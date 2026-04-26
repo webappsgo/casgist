@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/casapps/casgists/src/internal/database/models"
-	"github.com/casapps/casgists/src/internal/utils"
+	"github.com/casapps/casgist/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/utils"
 )
 
 // Migrator handles migration from OpenGist to CasGists

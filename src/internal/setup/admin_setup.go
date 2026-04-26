@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/casapps/casgists/src/internal/config"
-	"github.com/casapps/casgists/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/config"
+	"github.com/casapps/casgist/src/internal/database/models"
 )
 
 // AdminSetupService handles the comprehensive 8-step admin setup wizard

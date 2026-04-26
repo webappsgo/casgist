@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/casapps/casgists/src/internal/database/models"
-	"github.com/casapps/casgists/src/internal/search"
+	"github.com/casapps/casgist/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/search"
 	"gorm.io/gorm"
 	"github.com/labstack/echo/v4"
 	"github.com/spf13/viper"

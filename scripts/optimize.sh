@@ -6,10 +6,10 @@
 set -euo pipefail
 
 # Configuration
-DATA_DIR="/var/lib/casgists"
-CONFIG_DIR="/etc/casgists"
-LOG_DIR="/var/log/casgists"
-SERVICE_NAME="casgists"
+DATA_DIR="/var/lib/casgist"
+CONFIG_DIR="/etc/casgist"
+LOG_DIR="/var/log/casgist"
+SERVICE_NAME="casgist"
 
 # Colors
 RED='\033[0;31m'
@@ -40,7 +40,7 @@ check_root() {
 
 # Optimize SQLite database
 optimize_sqlite() {
-    local db_path="$DATA_DIR/casgists.db"
+    local db_path="$DATA_DIR/casgist.db"
     
     if [[ ! -f "$db_path" ]]; then
         warn "SQLite database not found at $db_path"
@@ -91,13 +91,13 @@ EOF
 configure_limits() {
     log "Configuring system limits..."
     
-    # Create limits file for casgists service
-    cat > "/etc/security/limits.d/99-casgists.conf" <<EOF
+    # Create limits file for casgist service
+    cat > "/etc/security/limits.d/99-casgist.conf" <<EOF
 # CasGists Production Limits
-casgists soft nofile 65536
-casgists hard nofile 65536
-casgists soft nproc 4096
-casgists hard nproc 4096
+casgist soft nofile 65536
+casgist hard nofile 65536
+casgist soft nproc 4096
+casgist hard nproc 4096
 EOF
     
     # Update systemd service limits
@@ -167,7 +167,7 @@ configure_logs() {
     log "Configuring log management..."
     
     # Update logrotate configuration
-    cat > "/etc/logrotate.d/casgists" <<EOF
+    cat > "/etc/logrotate.d/casgist" <<EOF
 $LOG_DIR/*.log {
     daily
     missingok
@@ -175,7 +175,7 @@ $LOG_DIR/*.log {
     compress
     delaycompress
     notifempty
-    create 0640 casgists casgists
+    create 0640 casgist casgist
     sharedscripts
     postrotate
         systemctl reload $SERVICE_NAME >/dev/null 2>&1 || true
@@ -184,21 +184,21 @@ $LOG_DIR/*.log {
 EOF
     
     # Create log cleanup cron job
-    cat > "/etc/cron.daily/casgists-cleanup" <<'EOF'
+    cat > "/etc/cron.daily/casgist-cleanup" <<'EOF'
 #!/bin/bash
 # Clean up old CasGists logs and temporary files
 
 # Remove logs older than 30 days
-find /var/log/casgists -name "*.log.gz" -mtime +30 -delete
+find /var/log/casgist -name "*.log.gz" -mtime +30 -delete
 
 # Clean temporary files older than 7 days
-find /var/lib/casgists/temp -type f -mtime +7 -delete
+find /var/lib/casgist/temp -type f -mtime +7 -delete
 
 # Clean orphaned git objects
-find /var/lib/casgists/repos -name "*.pack" -mtime +30 -exec git repack -d {} \;
+find /var/lib/casgist/repos -name "*.pack" -mtime +30 -exec git repack -d {} \;
 EOF
     
-    chmod +x /etc/cron.daily/casgists-cleanup
+    chmod +x /etc/cron.daily/casgist-cleanup
 }
 
 # Configure monitoring
@@ -206,12 +206,12 @@ setup_monitoring() {
     log "Setting up monitoring..."
     
     # Create monitoring script
-    cat > "/usr/local/bin/casgists-monitor" <<'EOF'
+    cat > "/usr/local/bin/casgist-monitor" <<'EOF'
 #!/bin/bash
 
 # CasGists Monitoring Script
-SERVICE="casgists"
-DB_PATH="/var/lib/casgists/casgists.db"
+SERVICE="casgist"
+DB_PATH="/var/lib/casgist/casgist.db"
 URL="http://localhost:64080/health"
 EMAIL_ALERT="admin@localhost"
 
@@ -232,16 +232,16 @@ if [[ "$HTTP_STATUS" != "200" ]]; then
 fi
 
 # Check disk usage
-DISK_USAGE=$(df -h /var/lib/casgists | awk 'NR==2 {print $5}' | sed 's/%//')
+DISK_USAGE=$(df -h /var/lib/casgist | awk 'NR==2 {print $5}' | sed 's/%//')
 if [[ $DISK_USAGE -gt 80 ]]; then
     echo "Disk usage is at ${DISK_USAGE}%" | mail -s "CasGists Alert: High Disk Usage" $EMAIL_ALERT
 fi
 EOF
     
-    chmod +x /usr/local/bin/casgists-monitor
+    chmod +x /usr/local/bin/casgist-monitor
     
     # Add to cron
-    (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/casgists-monitor >/dev/null 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/casgist-monitor >/dev/null 2>&1") | crontab -
 }
 
 # Configure backup
@@ -249,15 +249,15 @@ setup_backup() {
     log "Setting up automated backups..."
     
     # Create backup script
-    cat > "/usr/local/bin/casgists-backup" <<'EOF'
+    cat > "/usr/local/bin/casgist-backup" <<'EOF'
 #!/bin/bash
 
 # CasGists Backup Script
-BACKUP_DIR="/var/lib/casgists/backups"
-DB_PATH="/var/lib/casgists/casgists.db"
-REPOS_DIR="/var/lib/casgists/repos"
+BACKUP_DIR="/var/lib/casgist/backups"
+DB_PATH="/var/lib/casgist/casgist.db"
+REPOS_DIR="/var/lib/casgist/repos"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-BACKUP_NAME="casgists-backup-${TIMESTAMP}"
+BACKUP_NAME="casgist-backup-${TIMESTAMP}"
 
 # Create backup directory
 mkdir -p "$BACKUP_DIR"
@@ -277,8 +277,8 @@ if [[ -d "$REPOS_DIR" ]]; then
 fi
 
 # Backup configuration
-if [[ -d "/etc/casgists" ]]; then
-    tar -czf "$TEMP_DIR/$BACKUP_NAME/config.tar.gz" -C "/etc/casgists" .
+if [[ -d "/etc/casgist" ]]; then
+    tar -czf "$TEMP_DIR/$BACKUP_NAME/config.tar.gz" -C "/etc/casgist" .
 fi
 
 # Create final backup archive
@@ -289,15 +289,15 @@ tar -czf "$BACKUP_DIR/${BACKUP_NAME}.tar.gz" "$BACKUP_NAME"
 rm -rf "$TEMP_DIR"
 
 # Remove old backups (keep last 7 days)
-find "$BACKUP_DIR" -name "casgists-backup-*.tar.gz" -mtime +7 -delete
+find "$BACKUP_DIR" -name "casgist-backup-*.tar.gz" -mtime +7 -delete
 
 echo "Backup completed: $BACKUP_DIR/${BACKUP_NAME}.tar.gz"
 EOF
     
-    chmod +x /usr/local/bin/casgists-backup
+    chmod +x /usr/local/bin/casgist-backup
     
     # Add to cron (daily at 2 AM)
-    (crontab -l 2>/dev/null; echo "0 2 * * * /usr/local/bin/casgists-backup >/dev/null 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo "0 2 * * * /usr/local/bin/casgist-backup >/dev/null 2>&1") | crontab -
 }
 
 # Configure nginx (if installed)
@@ -309,16 +309,16 @@ configure_nginx() {
     
     log "Configuring nginx for CasGists..."
     
-    cat > "/etc/nginx/sites-available/casgists" <<'EOF'
+    cat > "/etc/nginx/sites-available/casgist" <<'EOF'
 # CasGists Nginx Configuration
-upstream casgists {
+upstream casgist {
     server 127.0.0.1:64080;
     keepalive 32;
 }
 
 # Rate limiting
-limit_req_zone $binary_remote_addr zone=casgists_limit:10m rate=10r/s;
-limit_conn_zone $binary_remote_addr zone=casgists_conn:10m;
+limit_req_zone $binary_remote_addr zone=casgist_limit:10m rate=10r/s;
+limit_conn_zone $binary_remote_addr zone=casgist_conn:10m;
 
 server {
     listen 80;
@@ -332,8 +332,8 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     
     # Rate limiting
-    limit_req zone=casgists_limit burst=20 nodelay;
-    limit_conn casgists_conn 100;
+    limit_req zone=casgist_limit burst=20 nodelay;
+    limit_conn casgist_conn 100;
     
     # Compression
     gzip on;
@@ -348,7 +348,7 @@ server {
     
     # Proxy to CasGists
     location / {
-        proxy_pass http://casgists;
+        proxy_pass http://casgist;
         proxy_http_version 1.1;
         
         # Headers
@@ -370,21 +370,21 @@ server {
     
     # Static files with caching
     location /static/ {
-        proxy_pass http://casgists;
+        proxy_pass http://casgist;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
     
     # Health check endpoint
     location /health {
-        proxy_pass http://casgists;
+        proxy_pass http://casgist;
         access_log off;
     }
 }
 EOF
     
     # Enable site
-    ln -sf /etc/nginx/sites-available/casgists /etc/nginx/sites-enabled/
+    ln -sf /etc/nginx/sites-available/casgist /etc/nginx/sites-enabled/
     
     # Test and reload nginx
     nginx -t && systemctl reload nginx
@@ -436,12 +436,12 @@ show_status() {
     echo ""
     
     # Database info
-    if [[ -f "$DATA_DIR/casgists.db" ]]; then
+    if [[ -f "$DATA_DIR/casgist.db" ]]; then
         echo "Database Info:"
         echo -n "  Size: "
-        du -sh "$DATA_DIR/casgists.db" | cut -f1
+        du -sh "$DATA_DIR/casgist.db" | cut -f1
         echo -n "  Tables: "
-        sqlite3 "$DATA_DIR/casgists.db" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" 2>/dev/null || echo "N/A"
+        sqlite3 "$DATA_DIR/casgist.db" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" 2>/dev/null || echo "N/A"
         echo ""
     fi
     
@@ -460,7 +460,7 @@ show_status() {
     
     # Recent logs
     echo "Recent Logs:"
-    tail -5 "$LOG_DIR/casgists.log" 2>/dev/null || echo "No logs available"
+    tail -5 "$LOG_DIR/casgist.log" 2>/dev/null || echo "No logs available"
 }
 
 # Parse command line arguments
@@ -472,10 +472,10 @@ case "${1:-optimize}" in
         show_status
         ;;
     backup)
-        /usr/local/bin/casgists-backup
+        /usr/local/bin/casgist-backup
         ;;
     monitor)
-        /usr/local/bin/casgists-monitor
+        /usr/local/bin/casgist-monitor
         ;;
     *)
         echo "Usage: $0 {optimize|status|backup|monitor}"

@@ -6,12 +6,12 @@
 set -euo pipefail
 
 # Configuration
-DATA_DIR="/var/lib/casgists"
-LOG_DIR="/var/log/casgists"
-BACKUP_DIR="/var/lib/casgists/backups"
-TEMP_DIR="/var/lib/casgists/temp"
-SERVICE_NAME="casgists"
-MAINTENANCE_LOG="/var/log/casgists/maintenance.log"
+DATA_DIR="/var/lib/casgist"
+LOG_DIR="/var/log/casgist"
+BACKUP_DIR="/var/lib/casgist/backups"
+TEMP_DIR="/var/lib/casgist/temp"
+SERVICE_NAME="casgist"
+MAINTENANCE_LOG="/var/log/casgist/maintenance.log"
 
 # Colors
 RED='\033[0;31m'
@@ -130,7 +130,7 @@ clean_git_repos() {
 optimize_database() {
     log "Optimizing database..."
     
-    local db_path="$DATA_DIR/casgists.db"
+    local db_path="$DATA_DIR/casgist.db"
     if [[ -f "$db_path" ]]; then
         # Backup before optimization
         cp "$db_path" "${db_path}.backup-$(date +%Y%m%d-%H%M%S)"
@@ -163,8 +163,8 @@ fix_permissions() {
     log "Fixing file permissions..."
     
     # Set ownership
-    chown -R casgists:casgists "$DATA_DIR"
-    chown -R casgists:casgists "$LOG_DIR"
+    chown -R casgist:casgist "$DATA_DIR"
+    chown -R casgist:casgist "$LOG_DIR"
     
     # Set directory permissions
     find "$DATA_DIR" -type d -exec chmod 750 {} \;
@@ -185,7 +185,7 @@ rotate_logs() {
     log "Rotating logs..."
     
     # Force logrotate
-    logrotate -f /etc/logrotate.d/casgists || warn "Logrotate failed"
+    logrotate -f /etc/logrotate.d/casgist || warn "Logrotate failed"
     
     # Compress old logs
     find "$LOG_DIR" -name "*.log.*" ! -name "*.gz" -mtime +1 -exec gzip {} \;
@@ -195,7 +195,7 @@ rotate_logs() {
 update_statistics() {
     log "Updating statistics..."
     
-    local db_path="$DATA_DIR/casgists.db"
+    local db_path="$DATA_DIR/casgist.db"
     if [[ -f "$db_path" ]]; then
         # Update system statistics
         sqlite3 "$db_path" <<EOF
@@ -218,7 +218,7 @@ EOF
 # Backup before maintenance
 create_maintenance_backup() {
     log "Creating pre-maintenance backup..."
-    /usr/local/bin/casgists-backup || warn "Backup failed"
+    /usr/local/bin/casgist-backup || warn "Backup failed"
 }
 
 # Health check

@@ -1,3 +1,10 @@
+# gitignore default template
+# Disable reminder in prompt
+ignoredirmessage
+
+# ignore .build_failed files
+**/.build_failed*
+
 # gitignore created on 10/18/25 at 16:53
 # Disable reminder in prompt
 ignoredirmessage

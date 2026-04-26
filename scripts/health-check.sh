@@ -7,8 +7,8 @@ set -euo pipefail
 
 # Configuration
 BASE_URL="${CASGISTS_URL:-http://localhost:64080}"
-DB_PATH="/var/lib/casgists/casgists.db"
-LOG_FILE="/var/log/casgists/health-check.log"
+DB_PATH="/var/lib/casgist/casgist.db"
+LOG_FILE="/var/log/casgist/health-check.log"
 WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}"
 EMAIL_TO="${ALERT_EMAIL:-}"
 
@@ -90,11 +90,11 @@ echo ""
 
 # 1. Service Status Check
 echo "Checking service status..."
-if systemctl is-active --quiet casgists; then
+if systemctl is-active --quiet casgist; then
     check_pass "Service is running"
     
     # Get memory usage
-    PID=$(systemctl show -p MainPID --value casgists)
+    PID=$(systemctl show -p MainPID --value casgist)
     if [[ -n "$PID" ]] && [[ "$PID" != "0" ]]; then
         MEM_RSS=$(ps -p "$PID" -o rss= 2>/dev/null | xargs)
         if [[ -n "$MEM_RSS" ]]; then
@@ -184,8 +184,8 @@ fi
 
 # 4. Disk Space Check
 echo -e "\nChecking disk space..."
-DISK_USAGE=$(df -h /var/lib/casgists | awk 'NR==2 {print $5}' | sed 's/%//')
-DISK_FREE=$(df -h /var/lib/casgists | awk 'NR==2 {print $4}')
+DISK_USAGE=$(df -h /var/lib/casgist | awk 'NR==2 {print $5}' | sed 's/%//')
+DISK_FREE=$(df -h /var/lib/casgist | awk 'NR==2 {print $4}')
 
 if [[ $DISK_USAGE -gt 90 ]]; then
     check_fail "Critical disk usage: ${DISK_USAGE}% (${DISK_FREE} free)"
@@ -197,9 +197,9 @@ fi
 
 # 5. Log File Check
 echo -e "\nChecking logs..."
-if [[ -d "/var/log/casgists" ]]; then
+if [[ -d "/var/log/casgist" ]]; then
     # Check for recent errors
-    ERROR_COUNT=$(grep -i "error\|panic\|fatal" /var/log/casgists/casgists.log 2>/dev/null | grep -c "$(date +'%Y-%m-%d')" || echo "0")
+    ERROR_COUNT=$(grep -i "error\|panic\|fatal" /var/log/casgist/casgist.log 2>/dev/null | grep -c "$(date +'%Y-%m-%d')" || echo "0")
     if [[ $ERROR_COUNT -gt 50 ]]; then
         check_fail "High error count in logs: $ERROR_COUNT today"
     elif [[ $ERROR_COUNT -gt 10 ]]; then
@@ -209,7 +209,7 @@ if [[ -d "/var/log/casgists" ]]; then
     fi
     
     # Check log size
-    LOG_SIZE=$(du -sh /var/log/casgists/ | cut -f1)
+    LOG_SIZE=$(du -sh /var/log/casgist/ | cut -f1)
     check_pass "Log directory size: $LOG_SIZE"
 else
     check_warn "Log directory not found"
@@ -217,7 +217,7 @@ fi
 
 # 6. Process Check
 echo -e "\nChecking processes..."
-PROCESS_COUNT=$(pgrep -c casgists || echo "0")
+PROCESS_COUNT=$(pgrep -c casgist || echo "0")
 if [[ $PROCESS_COUNT -eq 0 ]]; then
     check_fail "No CasGists processes found"
 elif [[ $PROCESS_COUNT -gt 10 ]]; then
@@ -245,7 +245,7 @@ fi
 
 # 8. Backup Check
 echo -e "\nChecking backups..."
-BACKUP_DIR="/var/lib/casgists/backups"
+BACKUP_DIR="/var/lib/casgist/backups"
 if [[ -d "$BACKUP_DIR" ]]; then
     LATEST_BACKUP=$(find "$BACKUP_DIR" -name "*.tar.gz" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
     if [[ -n "$LATEST_BACKUP" ]]; then
@@ -266,7 +266,7 @@ fi
 echo -e "\nChecking performance..."
 
 # CPU usage
-CPU_USAGE=$(top -bn1 | grep "casgists" | head -1 | awk '{print $9}' || echo "0")
+CPU_USAGE=$(top -bn1 | grep "casgist" | head -1 | awk '{print $9}' || echo "0")
 if [[ -n "$CPU_USAGE" ]] && (( $(echo "$CPU_USAGE > 80" | bc -l) )); then
     check_warn "High CPU usage: ${CPU_USAGE}%"
 elif [[ -n "$CPU_USAGE" ]]; then

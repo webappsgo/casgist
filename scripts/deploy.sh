@@ -6,13 +6,13 @@
 set -euo pipefail
 
 # Configuration
-INSTALL_DIR="/opt/casgists"
-DATA_DIR="/var/lib/casgists"
-CONFIG_DIR="/etc/casgists"
-LOG_DIR="/var/log/casgists"
-SERVICE_NAME="casgists"
-SERVICE_USER="casgists"
-SERVICE_GROUP="casgists"
+INSTALL_DIR="/opt/casgist"
+DATA_DIR="/var/lib/casgist"
+CONFIG_DIR="/etc/casgist"
+LOG_DIR="/var/log/casgist"
+SERVICE_NAME="casgist"
+SERVICE_USER="casgist"
+SERVICE_GROUP="casgist"
 
 # Colors
 RED='\033[0;31m'
@@ -90,12 +90,12 @@ install_binary() {
     fi
     
     log "Installing binary..."
-    cp "$binary_path" "$INSTALL_DIR/casgists"
-    chmod 755 "$INSTALL_DIR/casgists"
-    chown root:root "$INSTALL_DIR/casgists"
+    cp "$binary_path" "$INSTALL_DIR/casgist"
+    chmod 755 "$INSTALL_DIR/casgist"
+    chown root:root "$INSTALL_DIR/casgist"
     
     # Create symlink
-    ln -sf "$INSTALL_DIR/casgists" /usr/local/bin/casgists
+    ln -sf "$INSTALL_DIR/casgist" /usr/local/bin/casgist
 }
 
 # Create config file
@@ -115,12 +115,12 @@ server:
   port: 64080
   host: "0.0.0.0"
   enable_https: false
-  # cert_file: /etc/casgists/cert.pem
-  # key_file: /etc/casgists/key.pem
+  # cert_file: /etc/casgist/cert.pem
+  # key_file: /etc/casgist/key.pem
 
 database:
   type: sqlite
-  dsn: "${DATA_DIR}/casgists.db"
+  dsn: "${DATA_DIR}/casgist.db"
   max_connections: 25
   max_idle_time: 300
 
@@ -136,7 +136,7 @@ paths:
 log:
   level: info
   format: json
-  file: "${LOG_DIR}/casgists.log"
+  file: "${LOG_DIR}/casgist.log"
   max_size: 100 # MB
   max_backups: 7
   max_age: 30 # days
@@ -194,7 +194,7 @@ create_service() {
     cat > "$service_file" <<EOF
 [Unit]
 Description=CasGists - Self-hosted GitHub Gists alternative
-Documentation=https://github.com/casapps/casgists
+Documentation=https://github.com/casapps/casgist
 After=network-online.target
 Wants=network-online.target
 
@@ -202,11 +202,11 @@ Wants=network-online.target
 Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_GROUP
-ExecStart=$INSTALL_DIR/casgists
+ExecStart=$INSTALL_DIR/casgist
 Restart=on-failure
 RestartSec=10
-StandardOutput=append:$LOG_DIR/casgists.log
-StandardError=append:$LOG_DIR/casgists.log
+StandardOutput=append:$LOG_DIR/casgist.log
+StandardError=append:$LOG_DIR/casgist.log
 
 # Security hardening
 NoNewPrivileges=true
@@ -246,7 +246,7 @@ EOF
 # Setup log rotation
 setup_logrotate() {
     log "Setting up log rotation..."
-    cat > "/etc/logrotate.d/casgists" <<EOF
+    cat > "/etc/logrotate.d/casgist" <<EOF
 $LOG_DIR/*.log {
     daily
     missingok
@@ -275,7 +275,7 @@ setup_firewall() {
 
 # Main deployment function
 deploy() {
-    local binary_path="${1:-./build/casgists}"
+    local binary_path="${1:-./build/casgist}"
     
     log "Starting CasGists deployment..."
     
@@ -309,7 +309,7 @@ deploy() {
         log ""
         log "Access CasGists at: http://$(hostname -I | awk '{print $1}'):64080"
     else
-        error "Service failed to start. Check logs at: $LOG_DIR/casgists.log"
+        error "Service failed to start. Check logs at: $LOG_DIR/casgist.log"
     fi
 }
 
@@ -323,8 +323,8 @@ case "${1:-deploy}" in
         systemctl stop "$SERVICE_NAME" || true
         systemctl disable "$SERVICE_NAME" || true
         rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
-        rm -f "/etc/logrotate.d/casgists"
-        rm -f "/usr/local/bin/casgists"
+        rm -f "/etc/logrotate.d/casgist"
+        rm -f "/usr/local/bin/casgist"
         systemctl daemon-reload
         log "CasGists uninstalled (data preserved in $DATA_DIR)"
         ;;

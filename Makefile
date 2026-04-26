@@ -2,7 +2,7 @@
 # Semantic versioning with auto-increment from ./release.txt
 
 # Project configuration
-PROJECTNAME := casgists
+PROJECTNAME := casgist
 PROJECTORG := casapps
 
 # Version management from ./release.txt or fallback

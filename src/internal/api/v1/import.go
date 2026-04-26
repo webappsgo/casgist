@@ -12,9 +12,9 @@ import (
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 
-	"github.com/casapps/casgists/src/internal/database/models"
-	"github.com/casapps/casgists/src/internal/migration/github"
-	"github.com/casapps/casgists/src/internal/migration/gitlab"
+	"github.com/casapps/casgist/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/migration/github"
+	"github.com/casapps/casgist/src/internal/migration/gitlab"
 )
 
 // ImportHandler handles import-related API endpoints

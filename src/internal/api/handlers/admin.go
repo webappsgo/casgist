@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/casapps/casgists/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/database/models"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/spf13/viper"

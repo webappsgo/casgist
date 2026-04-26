@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/casapps/casgists/src/internal/migration"
+	"github.com/casapps/casgist/src/internal/migration"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/spf13/viper"

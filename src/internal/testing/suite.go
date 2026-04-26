@@ -24,10 +24,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/casapps/casgists/src/internal/auth"
-	"github.com/casapps/casgists/src/internal/database"
-	"github.com/casapps/casgists/src/internal/database/models"
-	"github.com/casapps/casgists/src/internal/server"
+	"github.com/casapps/casgist/src/internal/auth"
+	"github.com/casapps/casgist/src/internal/database"
+	"github.com/casapps/casgist/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/server"
 )
 
 // TestSuite provides a comprehensive testing framework for CasGists

@@ -9,10 +9,10 @@ import (
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 
-	"github.com/casapps/casgists/src/internal/cache"
-	"github.com/casapps/casgists/src/internal/database/models"
-	"github.com/casapps/casgists/src/internal/git"
-	"github.com/casapps/casgists/src/internal/search"
+	"github.com/casapps/casgist/src/internal/cache"
+	"github.com/casapps/casgist/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/git"
+	"github.com/casapps/casgist/src/internal/search"
 )
 
 // HealthService provides comprehensive health check functionality

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/casapps/casgists/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/database/models"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"

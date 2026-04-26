@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/casapps/casgists/src/internal/installer"
+	"github.com/casapps/casgist/src/internal/installer"
 	"golang.org/x/term"
 )
 

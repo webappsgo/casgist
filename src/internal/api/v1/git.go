@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"github.com/casapps/casgists/src/internal/git"
+	"github.com/casapps/casgist/src/internal/git"
 )
 
 // GitHandler handles Git-related API endpoints

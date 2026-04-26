@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/casapps/casgists/src/internal/config"
-	"github.com/casapps/casgists/src/internal/privilege"
+	"github.com/casapps/casgist/src/internal/config"
+	"github.com/casapps/casgist/src/internal/privilege"
 )
 
 // ServiceInstaller handles system service installation

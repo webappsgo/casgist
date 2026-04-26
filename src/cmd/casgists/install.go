@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/casapps/casgists/src/internal/installer"
+	"github.com/casapps/casgist/src/internal/installer"
 )
 
 // handleInstallCommand handles the install command

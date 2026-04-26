@@ -1,23 +1,23 @@
 # CasGists Docker Compose - Production Configuration
 # BASE SPEC Compliant: Binds to 172.17.0.1 for security
 
-name: casgists
+name: casgist
 
 services:
-  casgists:
-    image: ghcr.io/casapps/casgists:latest
-    container_name: casgists
+  casgist:
+    image: ghcr.io/casapps/casgist:latest
+    container_name: casgist
     restart: unless-stopped
     ports:
       - "172.17.0.1:64080:80"  # Production: bind to Docker bridge for reverse proxy
     environment:
       # Database - PostgreSQL for production
       - CASGISTS_DB_TYPE=postgres
-      - CASGISTS_DB_DSN=postgres://casgists:${POSTGRES_PASSWORD:-casgists}@postgres:5432/casgists?sslmode=disable
+      - CASGISTS_DB_DSN=postgres://casgist:${POSTGRES_PASSWORD:-casgist}@postgres:5432/casgist?sslmode=disable
 
       # Server
       - CASGISTS_DATA_DIR=/data
-      - CASGISTS_LOG_DIR=/var/log/casgists
+      - CASGISTS_LOG_DIR=/var/log/casgist
       - CASGISTS_SECRET_KEY=${SECRET_KEY}
 
       # Features
@@ -28,13 +28,13 @@ services:
       - CASGISTS_CACHE_TYPE=valkey
       - CASGISTS_CACHE_URL=valkey://valkey:6379
     volumes:
-      - ./rootfs/data/casgists:/data
-      - ./rootfs/config/casgists:/config
+      - ./rootfs/data/casgist:/data
+      - ./rootfs/config/casgist:/config
     depends_on:
       - postgres
       - valkey
     networks:
-      - casgists
+      - casgist
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/api/v1/health"]
       interval: 30s
@@ -44,31 +44,31 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: casgists_postgres
+    container_name: casgist_postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=casgists
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-casgists}
-      - POSTGRES_DB=casgists
+      - POSTGRES_USER=casgist
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-casgist}
+      - POSTGRES_DB=casgist
     volumes:
       - ./rootfs/db/postgres:/var/lib/postgresql/data
     networks:
-      - casgists
+      - casgist
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U casgists"]
+      test: ["CMD-SHELL", "pg_isready -U casgist"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   valkey:
     image: valkey/valkey:7-alpine
-    container_name: casgists_valkey
+    container_name: casgist_valkey
     restart: unless-stopped
-    command: valkey-server --appendonly yes --requirepass ${VALKEY_PASSWORD:-casgists}
+    command: valkey-server --appendonly yes --requirepass ${VALKEY_PASSWORD:-casgist}
     volumes:
       - ./rootfs/db/valkey:/data
     networks:
-      - casgists
+      - casgist
     healthcheck:
       test: ["CMD", "valkey-cli", "--raw", "incr", "ping"]
       interval: 10s
@@ -76,6 +76,6 @@ services:
       retries: 5
 
 networks:
-  casgists:
+  casgist:
     driver: bridge
     external: false

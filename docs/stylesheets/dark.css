@@ -1,0 +1,6 @@
+/* Dark theme customization */
+:root {
+  --md-primary-fg-color: #8b5cf6;
+  --md-primary-fg-color--light: #a78bfa;
+  --md-primary-fg-color--dark: #7c3aed;
+}

@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/casapps/casgists/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/database/models"
 )
 
 // Service handles custom domain operations

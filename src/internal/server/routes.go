@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/casapps/casgists/src/internal/api/handlers"
-	"github.com/casapps/casgists/src/internal/auth"
-	"github.com/casapps/casgists/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/api/handlers"
+	"github.com/casapps/casgist/src/internal/auth"
+	"github.com/casapps/casgist/src/internal/database/models"
 	"github.com/labstack/echo/v4"
 )
 

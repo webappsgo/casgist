@@ -169,7 +169,7 @@ func (s *SwaggerService) generateSpec() {
 			Version:     "1.0.0",
 			Contact: OpenAPIContact{
 				Name:  "CasGists Team",
-				URL:   "https://github.com/casapps/casgists",
+				URL:   "https://github.com/casapps/casgist",
 				Email: "support@casapps.com",
 			},
 			License: OpenAPILicense{

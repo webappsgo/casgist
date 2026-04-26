@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/casapps/casgists/src/internal/models"
+	"github.com/casapps/casgist/src/internal/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )

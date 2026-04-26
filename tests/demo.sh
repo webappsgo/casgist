@@ -8,12 +8,12 @@ echo ""
 
 # Clean up
 rm -f demo.db demo.log
-pkill -f casgists 2>/dev/null
+pkill -f casgist 2>/dev/null
 sleep 1
 
 # Start server in background
 echo "Starting CasGists server..."
-CASGISTS_DB_TYPE=sqlite CASGISTS_DB_DSN=demo.db ./build/casgists > demo.log 2>&1 &
+CASGISTS_DB_TYPE=sqlite CASGISTS_DB_DSN=demo.db ./build/casgist > demo.log 2>&1 &
 SERVER_PID=$!
 sleep 5
 

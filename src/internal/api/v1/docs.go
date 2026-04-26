@@ -3,7 +3,7 @@ package v1
 import (
 	"net/http"
 
-	"github.com/casapps/casgists/src/internal/docs"
+	"github.com/casapps/casgist/src/internal/docs"
 	"github.com/labstack/echo/v4"
 )
 

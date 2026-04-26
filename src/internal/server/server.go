@@ -15,22 +15,22 @@ import (
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 
-	"github.com/casapps/casgists/src/internal/api/v1"
-	echoMiddleware "github.com/casapps/casgists/src/internal/api/middleware"
-	"github.com/casapps/casgists/src/internal/auth"
-	"github.com/casapps/casgists/src/internal/cache"
-	"github.com/casapps/casgists/src/internal/config"
-	"github.com/casapps/casgists/src/internal/database/models"
-	"github.com/casapps/casgists/src/internal/email"
-	"github.com/casapps/casgists/src/internal/git"
-	// "github.com/casapps/casgists/src/internal/handlers/public" // Temporarily disabled
-	// "github.com/casapps/casgists/src/internal/handlers/setup" // Temporarily disabled
-	"github.com/casapps/casgists/src/internal/performance"
-	// "github.com/casapps/casgists/src/internal/repositories" // Temporarily disabled
-	"github.com/casapps/casgists/src/internal/search"
-	"github.com/casapps/casgists/src/internal/webhook"
-	// "github.com/casapps/casgists/src/internal/services" // Temporarily disabled
-	// setupPkg "github.com/casapps/casgists/src/internal/setup" // Temporarily disabled
+	"github.com/casapps/casgist/src/internal/api/v1"
+	echoMiddleware "github.com/casapps/casgist/src/internal/api/middleware"
+	"github.com/casapps/casgist/src/internal/auth"
+	"github.com/casapps/casgist/src/internal/cache"
+	"github.com/casapps/casgist/src/internal/config"
+	"github.com/casapps/casgist/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/email"
+	"github.com/casapps/casgist/src/internal/git"
+	// "github.com/casapps/casgist/src/internal/handlers/public" // Temporarily disabled
+	// "github.com/casapps/casgist/src/internal/handlers/setup" // Temporarily disabled
+	"github.com/casapps/casgist/src/internal/performance"
+	// "github.com/casapps/casgist/src/internal/repositories" // Temporarily disabled
+	"github.com/casapps/casgist/src/internal/search"
+	"github.com/casapps/casgist/src/internal/webhook"
+	// "github.com/casapps/casgist/src/internal/services" // Temporarily disabled
+	// setupPkg "github.com/casapps/casgist/src/internal/setup" // Temporarily disabled
 )
 
 // Server represents the main application server

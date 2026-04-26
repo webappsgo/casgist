@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/casapps/casgists/src/internal/cache"
+	"github.com/casapps/casgist/src/internal/cache"
 	"github.com/google/uuid"
 )
 

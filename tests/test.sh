@@ -24,22 +24,22 @@ test_fail() {
 }
 
 # Check if binary exists
-if [ ! -f "./casgists" ]; then
+if [ ! -f "./casgist" ]; then
     echo "Building CasGists..."
-    go build -o casgists cmd/casgists/main.go || test_fail "Build failed"
+    go build -o casgist cmd/casgist/main.go || test_fail "Build failed"
     test_pass "Build successful"
 fi
 
 # Test 1: Version check
 echo
 echo "Test 1: Version check"
-./casgists --version || test_fail "Version check failed"
+./casgist --version || test_fail "Version check failed"
 test_pass "Version check passed"
 
 # Test 2: Help command
 echo
 echo "Test 2: Help command"
-./casgists --help > /dev/null || test_fail "Help command failed"
+./casgist --help > /dev/null || test_fail "Help command failed"
 test_pass "Help command passed"
 
 # Test 3: Configuration validation
@@ -58,7 +58,7 @@ mkdir -p ./test_data
 
 # Start server in background
 echo "Starting server..."
-./casgists > test_server.log 2>&1 &
+./casgist > test_server.log 2>&1 &
 SERVER_PID=$!
 
 # Wait for server to start
@@ -191,7 +191,7 @@ echo
 echo "=== All tests passed! ==="
 echo
 echo "CasGists is working correctly. You can now:"
-echo "1. Run './casgists' to start the server"
+echo "1. Run './casgist' to start the server"
 echo "2. Access the web interface at http://localhost:3000"
 echo "3. Use the API at http://localhost:3000/api/v1"
 echo

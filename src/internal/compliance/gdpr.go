@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/casapps/casgists/src/internal/models"
+	"github.com/casapps/casgist/src/internal/models"
 )
 
 // GDPRService handles GDPR compliance operations

@@ -35,7 +35,7 @@ run_test() {
 
 # Build Test
 echo -e "${YELLOW}1. Build System Tests${NC}"
-run_test "Go Build" "go build ./cmd/casgists"
+run_test "Go Build" "go build ./cmd/casgist"
 run_test "Go Mod Tidy" "go mod tidy"
 run_test "Go Vet" "go vet ./..."
 
@@ -45,7 +45,7 @@ run_test "Go Fmt Check" "test -z \$(gofmt -l .)"
 
 # File Structure Tests
 echo -e "\n${YELLOW}3. File Structure Tests${NC}"
-run_test "Main Binary Exists" "test -f casgists"
+run_test "Main Binary Exists" "test -f casgist"
 run_test "Config Directory" "test -d configs"
 run_test "Web Assets" "test -d web/static"
 run_test "Templates" "test -d web/templates"
@@ -62,13 +62,13 @@ run_test "Offline Page" "test -f web/templates/pages/offline.html"
 
 # Configuration Tests
 echo -e "\n${YELLOW}5. Configuration Tests${NC}"
-run_test "Default Config" "test -f configs/casgists.yaml"
+run_test "Default Config" "test -f configs/casgist.yaml"
 run_test "Development Config" "test -f configs/development.yaml"
 run_test "Production Config" "test -f configs/production.yaml"
 
 # Service Tests
 echo -e "\n${YELLOW}6. Service Installation Tests${NC}"
-run_test "Systemd Service File" "test -f scripts/casgists.service"
+run_test "Systemd Service File" "test -f scripts/casgist.service"
 run_test "Install Script" "test -f scripts/install.sh"
 run_test "Privilege Script" "test -f scripts/privilege.sh"
 
@@ -124,8 +124,8 @@ run_test "Deployment Guide" "test -f docs/DEPLOYMENT.md"
 
 # Binary Size and Performance Tests
 echo -e "\n${YELLOW}14. Performance Tests${NC}"
-if [ -f casgists ]; then
-    BINARY_SIZE=$(stat -f%z casgists 2>/dev/null || stat -c%s casgists 2>/dev/null || echo "0")
+if [ -f casgist ]; then
+    BINARY_SIZE=$(stat -f%z casgist 2>/dev/null || stat -c%s casgist 2>/dev/null || echo "0")
     if [ "$BINARY_SIZE" -gt 0 ] && [ "$BINARY_SIZE" -lt 100000000 ]; then  # Less than 100MB
         echo -e "${GREEN}✓ PASS: Binary Size Reasonable ($(echo $BINARY_SIZE | awk '{print $1/1048576 "MB"}'))${NC}"
         ((TESTS_PASSED++))

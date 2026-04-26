@@ -11,7 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 
-	"github.com/casapps/casgists/src/internal/models"
+	"github.com/casapps/casgist/src/internal/models"
 )
 
 // AuditService handles comprehensive audit logging

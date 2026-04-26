@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/casapps/casgists/src/internal/models"
-	"github.com/casapps/casgists/src/internal/webhook"
+	"github.com/casapps/casgist/src/internal/models"
+	"github.com/casapps/casgist/src/internal/webhook"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/spf13/viper"

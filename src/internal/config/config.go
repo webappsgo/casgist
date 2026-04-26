@@ -47,7 +47,7 @@ func Load() (*viper.Viper, error) {
 	for _, path := range configPaths {
 		v.AddConfigPath(path)
 	}
-	v.SetConfigName("config")
+	v.SetConfigName("server")
 
 	// Read config file (ignore if not found)
 	if err := v.ReadInConfig(); err != nil {
@@ -187,11 +187,41 @@ func setDefaults(v *viper.Viper) {
 }
 
 func resolvePaths(v *viper.Viper) {
-	// Get all config keys
+	// First pass: expand environment variables and home directory
+	for _, key := range []string{
+		"paths.data",
+		"paths.logs",
+		"paths.cache",
+		"paths.temp",
+		"paths.config",
+		"paths.backup",
+		"database.path",
+	} {
+		if path := v.GetString(key); path != "" {
+			v.Set(key, expandPath(path))
+		}
+	}
+	
+	// Second pass: substitute path variables like ${DATA_DIR}
 	for _, key := range v.AllKeys() {
 		value := v.GetString(key)
 		
-		// Check if value contains variable substitution
+		// Check if value contains ${VAR} pattern
+		if strings.Contains(value, "${") && strings.Contains(value, "}") {
+			resolved := value
+			
+			// Replace path variables
+			resolved = strings.ReplaceAll(resolved, "${DATA_DIR}", v.GetString("paths.data"))
+			resolved = strings.ReplaceAll(resolved, "${CONFIG_DIR}", v.GetString("paths.config"))
+			resolved = strings.ReplaceAll(resolved, "${LOG_DIR}", v.GetString("paths.logs"))
+			resolved = strings.ReplaceAll(resolved, "${BACKUP_DIR}", v.GetString("paths.backup"))
+			resolved = strings.ReplaceAll(resolved, "${CACHE_DIR}", v.GetString("paths.cache"))
+			resolved = strings.ReplaceAll(resolved, "${TEMP_DIR}", v.GetString("paths.temp"))
+			
+			v.Set(key, resolved)
+		}
+		
+		// Also check for {var} pattern (existing functionality)
 		if strings.Contains(value, "{") && strings.Contains(value, "}") {
 			resolved := value
 			

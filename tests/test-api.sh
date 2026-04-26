@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Kill any existing processes
-pkill -f casgists 2>/dev/null || true
+pkill -f casgist 2>/dev/null || true
 sleep 2
 
 # Start server
 echo "Starting server..."
-./build/casgists --config=configs/development.yaml > test-server.log 2>&1 &
+./build/casgist --config=configs/development.yaml > test-server.log 2>&1 &
 SERVER_PID=$!
 
 # Wait for server to start

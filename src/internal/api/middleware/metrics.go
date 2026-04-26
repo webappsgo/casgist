@@ -6,7 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/casapps/casgists/src/internal/metrics"
+	"github.com/casapps/casgist/src/internal/metrics"
 )
 
 // MetricsMiddleware creates middleware for collecting HTTP metrics

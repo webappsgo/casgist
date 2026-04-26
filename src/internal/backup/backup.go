@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/casapps/casgists/src/internal/database/models"
+	"github.com/casapps/casgist/src/internal/database/models"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"

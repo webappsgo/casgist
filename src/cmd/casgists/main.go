@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -13,26 +14,44 @@ import (
 	"path/filepath"
 	"time"
 
-	// "github.com/casapps/casgists/src/internal/cli" // Temporarily disabled
-	"github.com/casapps/casgists/src/internal/config"
-	"github.com/casapps/casgists/src/internal/database"
-	"github.com/casapps/casgists/src/internal/privileges"
-	"github.com/casapps/casgists/src/internal/server"
+	// "github.com/casapps/casgist/src/internal/cli" // Temporarily disabled
+	"github.com/casapps/casgist/src/internal/config"
+	"github.com/casapps/casgist/src/internal/database"
+	"github.com/casapps/casgist/src/internal/privileges"
+	"github.com/casapps/casgist/src/internal/server"
 	"github.com/labstack/echo/v4"
 	"github.com/spf13/viper"
 )
 
 var (
 	Version = "dev"
+	
+	// CLI flags per AI.md PART 7
+	flagHelp      bool
+	flagVersion   bool
+	flagPort      int
+	flagDataDir   string
+	flagConfigDir string
+	flagLogDir    string
 )
 
 func main() {
+	// Setup flags per AI.md PART 7 (NON-NEGOTIABLE)
+	flag.BoolVar(&flagHelp, "help", false, "Show help message")
+	flag.BoolVar(&flagHelp, "h", false, "Show help message (shorthand)")
+	flag.BoolVar(&flagVersion, "version", false, "Show version information")
+	flag.BoolVar(&flagVersion, "v", false, "Show version information (shorthand)")
+	flag.IntVar(&flagPort, "port", 0, "Server port (0 = auto-select from range 64000-64999)")
+	flag.StringVar(&flagDataDir, "data-dir", "", "Data directory path")
+	flag.StringVar(&flagConfigDir, "config-dir", "", "Configuration directory path")
+	flag.StringVar(&flagLogDir, "log-dir", "", "Log directory path")
+	
 	// Setup logging
 	setupLogging()
 
 	args := os.Args[1:]
 
-	// Handle commands first
+	// Handle commands BEFORE flag parsing (commands don't use flags)
 	if len(args) > 0 {
 		switch args[0] {
 		case "install":
@@ -55,24 +74,27 @@ func main() {
 				log.Fatalf("Verification failed: %v", err)
 			}
 			return
-		case "--version", "-v":
-			fmt.Printf("CasGists v%s\n", Version)
-			os.Exit(0)
-		case "--help", "-h":
-			printHelp()
-			os.Exit(0)
 		}
 	}
-
-	// Handle remaining flags
-	for _, arg := range args {
+	
+	// Parse flags (after checking for commands)
+	flag.Parse()
+	
+	// Handle flag-based actions
+	if flagHelp {
+		printHelp()
+		os.Exit(0)
+	}
+	
+	if flagVersion {
+		fmt.Printf("casgists version %s\n", Version)
+		os.Exit(0)
+	}
+	
+	// Handle legacy flags for backward compatibility
+	remainingArgs := flag.Args()
+	for _, arg := range remainingArgs {
 		switch arg {
-		case "--version", "-v":
-			fmt.Printf("CasGists v%s\n", Version)
-			os.Exit(0)
-		case "--help", "-h":
-			printHelp()
-			os.Exit(0)
 		case "--config-check":
 			if err := handleConfigCheckCommand(); err != nil {
 				log.Fatalf("Configuration check failed: %v", err)
@@ -123,6 +145,23 @@ func main() {
 	cfg, err := config.LoadWithPaths(pathConfig)
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	
+	// Apply CLI flag overrides (per AI.md PART 7)
+	if flagPort > 0 {
+		cfg.Set("server.port", flagPort)
+	}
+	if flagDataDir != "" {
+		cfg.Set("paths.data", flagDataDir)
+		pathConfig.DataDir = flagDataDir
+	}
+	if flagConfigDir != "" {
+		cfg.Set("paths.config", flagConfigDir)
+		// PathConfig doesn't have ConfigDir field - using DataDir structure
+	}
+	if flagLogDir != "" {
+		cfg.Set("paths.logs", flagLogDir)
+		pathConfig.LogDir = flagLogDir
 	}
 
 	// Initialize database
@@ -228,7 +267,7 @@ Examples:
   casgists setup              Run setup wizard
   casgists --config-check     Validate configuration
 
-For more information, visit: https://github.com/casapps/casgists
+For more information, visit: https://github.com/casapps/casgist
 `, Version)
 }
 

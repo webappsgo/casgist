@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 	
-	"github.com/casapps/casgists/src/internal/cache"
+	"github.com/casapps/casgist/src/internal/cache"
 )
 
 // registerOrgRoutes registers all organization routes

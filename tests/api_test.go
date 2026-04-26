@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	testingSuite "github.com/casapps/casgists/src/internal/testing"
+	testingSuite "github.com/casapps/casgist/src/internal/testing"
 )
 
 // APITestSuite tests the API endpoints
