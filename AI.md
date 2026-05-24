@@ -385,7 +385,7 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
 ```bash
 # After make dev, debug in Docker with tools
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-*/ 2>/dev/null | head -1)
-docker run --rm -it -v "$BUILD_DIR:/app" alpine:latest sh -c "
+docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
   apk add --no-cache curl bash file jq  # Required debug tools
   /app/{project_name} --help
   /app/{project_name} --version
@@ -431,7 +431,7 @@ make dev                # Quick build to temp dir
 
 # 2. Debug in Docker (with tools)
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-*/ 2>/dev/null | head -1)
-docker run --rm -it -v "$BUILD_DIR:/app" alpine:latest sh -c "
+docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
   apk add --no-cache curl bash file jq
   /app/{project_name} --help
 "
@@ -622,7 +622,7 @@ if cacheSize > 1024*1024*1024 {
 | **Unsafe PR triggers forbidden by default** | Do NOT use `pull_request_target` for untrusted code execution, build, test, or artifact upload paths |
 | **Secrets never exposed to forks** | Fork PR workflows run without repo secrets, write tokens, publish steps, or deployment credentials |
 | **Dependency updates are automated** | Public repos include dependency update automation for every ecosystem in use |
-| **Secret scanning is mandatory** | Public repos run `truffleHog` (`trufflesecurity/trufflehog`, Apache-2.0, no license key) on push/PR via `security.yml`; findings are blockers. Never use `gitleaks` — requires a commercial license for org repos |
+| **Secret scanning is mandatory** | Public repos run `truffleHog` (`trufflesecurity/trufflehog`, Apache-2.0, no license key) on push/PR via `ci.yml`; findings are blockers. Never use `gitleaks` — requires a commercial license for org repos |
 | **Release outputs are verifiable** | Releases publish checksums, SBOM, release notes, and provenance/attestation when the host platform supports it |
 
 ### Workflow Permissions
@@ -705,10 +705,10 @@ Every project ships workflow files for all five CI/CD providers. Same gates, dif
 
 | Provider | Workflow location | Syntax |
 |----------|------------------|--------|
-| GitHub | `.github/workflows/build.yml` / `release.yml` / `security.yml` | GitHub Actions |
+| GitHub  | `.github/workflows/ci.yml` / `release.yml` / `build-toolchain.yml` | GitHub Actions |
 | GitLab | `.gitlab-ci.yml` | GitLab CI (stages: build, test, security, release) |
-| Gitea | `.gitea/workflows/build.yml` / `release.yml` / `security.yml` | GitHub Actions (act runner) |
-| Forgejo | `.forgejo/workflows/build.yml` / `release.yml` / `security.yml` | GitHub Actions (act runner) |
+| Gitea   | `.gitea/workflows/ci.yml` / `release.yml` / `build-toolchain.yml` | GitHub Actions (act runner) |
+| Forgejo | `.forgejo/workflows/ci.yml` / `release.yml` / `build-toolchain.yml` | GitHub Actions (act runner) |
 | Jenkins | `Jenkinsfile` | Declarative Pipeline |
 
 **`security` job conditionality (applies to all providers):**
@@ -718,9 +718,8 @@ Every project ships workflow files for all five CI/CD providers. Same gates, dif
 - `image-scan` (Trivy) — conditional on Dockerfile present; runs after image build
 
 **GitHub Actions job ordering (`needs:`):**
-- `build.yml`: `lint` and `test` run in parallel → `build` needs: test → `upload-artifacts` needs: build
-- `release.yml`: `build` → `release` (needs: build); release job always re-runs its own build inline
-- `security.yml`: all jobs parallel — no `needs:` between them
+- `ci.yml`: `ensure-build-image` first → `lint`, `test`, `secret-scan`, `workflow-policy`, `vuln-scan` in parallel (all need ensure-build-image) → `build` (needs lint + test) → `coverage`, `image-scan`, `upload-artifacts` (need build); security jobs also run on weekly schedule via `if:` conditions
+- `release.yml`: `ensure-build-image` → `build` → `release` (needs: build)
 - Cross-workflow ordering via branch protection; never `workflow_run`
 
 **GitLab CI**: security jobs run in the `security` stage (parallel by default in the same stage). Release stage has `rules: - if: $CI_COMMIT_TAG`.
@@ -1512,7 +1511,7 @@ On EVERY new conversation or after "context compacted" message:
 6. Built-in scheduler, GeoIP, metrics, email, backup, update
 7. Full admin panel with ALL settings
 8. Client binary for ALL projects
-9. Commit often — small, focused commits. Do NOT hoard unrelated changes into one big commit
+9. Commit often — small, focused commits. Do NOT hoard unrelated changes into one big commit. **Subagents do not commit** — complete edits and report back to the parent instance; the parent reviews the diff and owns the commit.
 
 ## File Locations
 - Config: `{config_dir}/server.yml`
@@ -1935,9 +1934,8 @@ Instructions for how this agent should behave...
   - `.github/ISSUE_TEMPLATE/feature_request.md`
   - `.github/ISSUE_TEMPLATE/config.yml`
   - `.github/PULL_REQUEST_TEMPLATE.md`
-  - `.github/workflows/build.yml`
+  - `.github/workflows/ci.yml`
   - `.github/workflows/release.yml`
-  - `.github/workflows/security.yml`
 - These files are templates/project policy files: define them once in the template, then update them to match the actual project
 - `FUNDING.yml` remains optional
 
@@ -1987,9 +1985,8 @@ Instructions for how this agent should behave...
   - breaking-change note
   - security/privacy impact note
   - checklist confirming no placeholder/stub/TODO behavior was introduced
-- `.github/workflows/build.yml` MUST verify real build/test/lint/coverage rules from the repo
+- `.github/workflows/ci.yml` MUST verify build/test/lint/coverage AND enforce secret scanning, dependency/security validation, and workflow hardening checks
 - `.github/workflows/release.yml` MUST produce the real release artifacts, checksums, release notes, and any required publish steps
-- `.github/workflows/security.yml` MUST enforce secret scanning, dependency/security validation, and workflow hardening checks
 
 **Code of Conduct Rule:**
 - For **public/community-facing repositories**, `.github/CODE_OF_CONDUCT.md` MUST exist
@@ -3031,6 +3028,7 @@ Getting code correct on the first try is much harder than iterating with feedbac
 
 - Remove completed items from TODO.AI.md as each one is fully resolved and committed — delete each item individually; never truncate the whole file at once
 - File stays empty until new tasks are added
+- **Subagents:** do not write COMMIT_MESS or call gitcommit — complete your edits and report back to the parent instance to handle the commit.
 
 **This rule applies ONLY to TODO.AI.md.** The human-owned `TODO.md` is never emptied or truncated by AI — AI may only mark individual items done in place.
 
@@ -3113,7 +3111,7 @@ Getting code correct on the first try is much harder than iterating with feedbac
 - no unsafe `pull_request_target` build/test/publish path
 - third-party actions pinned to full SHA
 - no secrets/write tokens exposed to fork PRs
-- security workflow exists and blocks on secret/dependency/workflow-policy failures
+- ci.yml security jobs (secret-scan, vuln-scan, workflow-policy) exist and block on failures
 
 ### Step 4: AI Tool Configuration (Rule Files)
 **Do AI rule files exist and follow the required format?**
@@ -3254,6 +3252,7 @@ Spec version: {line count or hash}
 | Full | All tools available |
 | **PROHIBITED** | `git commit`, `git push` (plain git) — denied by sandbox/permission rules. They bypass commit signing AND the unified commit+push wrapper |
 | Allowed | `git status`, `git diff`, `git log`, `git branch`, `git add` (read + staging) |
+| **PROHIBITED (subagents)** | Writing `.git/COMMIT_MESS` or calling `gitcommit` — subagents complete edits and report back; the parent (main) instance reviews the diff and owns the commit |
 
 ### Remote Image/Screenshot Handling
 
@@ -3281,6 +3280,8 @@ Spec version: {line count or hash}
 | **Modifying PARTS 0-36** | **Implementation patterns are fixed - NEVER modify** |
 | Plain `git commit` (any flag form) | Bypasses signing wrapper |
 | Plain `git push` | Bypasses the commit wrapper entirely |
+| Subagent writing `.git/COMMIT_MESS` | Commit message must be written by the parent instance after reviewing the actual diff |
+| Subagent calling `gitcommit` | Only the parent (main) instance runs gitcommit — subagents complete edits and report back |
 | Deleting files without confirmation | Destructive action |
 | Changing NON-NEGOTIABLE sections | Specification violation |
 | Skipping validation | Security requirement |
@@ -4434,16 +4435,23 @@ db.Query("SELECT * FROM users WHERE email = '" + email + "'")
 
 **These are sensible defaults - all limits are configurable via admin panel and config file.**
 
+**General endpoint defaults:**
+
+| Endpoint class | Default limit | Window | Notes |
+|----------------|---------------|--------|-------|
+| **Read (GET, HEAD)** | **120 req/min** | 60s | Per IP, sliding window |
+| **Write (POST, PUT, PATCH, DELETE)** | **10 req/min** | 60s | Per IP, sliding window |
+| **Health / status** | **120 req/min** | 60s | `/healthz`, `/readyz`, `/livez` |
+| **Global burst** | **240 req/min** | 60s | Absolute ceiling across all types |
+
+**Auth endpoint defaults (stricter — applied regardless of general limits above):**
+
 | Endpoint Type | Default Limit | Default Window | Response |
 |---------------|---------------|----------------|----------|
 | **Login attempts** | 5 | 15 minutes | 429 + lockout |
 | **Password reset** | 3 | 1 hour | 429 + silent (no email hint) |
-| **API (authenticated)** | Configurable | 1 minute | 429 + Retry-After header |
-| **API (unauthenticated)** | Configurable | 1 minute | 429 + Retry-After header |
 | **Registration** | 5 | 1 hour | 429 |
 | **File upload** | 10 | 1 hour | 429 |
-
-**Project-specific defaults:** Each project defines its own default rate limits based on expected usage patterns. High-traffic APIs may need higher limits; sensitive operations may need lower limits. Define project-appropriate defaults in IDEA.md.
 
 ### Error Message Rules
 
@@ -4810,10 +4818,10 @@ Detect platform by checking for workflow files in this order:
 
 ```markdown
 # GitHub Actions
-[![Build](https://github.com/{project_org}/{project_name}/actions/workflows/build.yml/badge.svg)](https://github.com/{project_org}/{project_name}/actions/workflows/build.yml)
+[![CI](https://github.com/{project_org}/{project_name}/actions/workflows/ci.yml/badge.svg)](https://github.com/{project_org}/{project_name}/actions/workflows/ci.yml)
 
 # Gitea/Forgejo Actions
-[![Build](https://git.example.com/{project_org}/{project_name}/actions/workflows/build.yml/badge.svg)](https://git.example.com/{project_org}/{project_name}/actions)
+[![CI](https://git.example.com/{project_org}/{project_name}/actions/workflows/ci.yml/badge.svg)](https://git.example.com/{project_org}/{project_name}/actions)
 
 # GitLab CI
 [![Build](https://gitlab.com/{project_org}/{project_name}/badges/main/pipeline.svg)](https://gitlab.com/{project_org}/{project_name}/-/pipelines)
@@ -5733,18 +5741,41 @@ name: License Check
 on: [push, pull_request]
 
 jobs:
-  check-licenses:
+  ensure-build-image:
     runs-on: ubuntu-latest
-    container: golang:alpine
+    permissions:
+      packages: read
+    outputs:
+      image: ${{ steps.pull.outputs.image }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: pull
+        name: Pull build image (fail fast if missing)
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:build"
+          if ! docker pull "$IMAGE"; then
+            echo "::error::Build image $IMAGE not found."
+            echo "::error::Trigger the 'Build Toolchain Image' workflow (workflow_dispatch) to create it."
+            echo "::error::Never commit ci.yml or release.yml before the build image exists in the registry."
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
-      - name: Install go-licenses
-        run: go install github.com/google/go-licenses@latest
+  check-licenses:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Check licenses
         run: |
-          # Verify no GPL/AGPL/LGPL licenses
+          # Verify no GPL/AGPL/LGPL licenses (go-licenses pre-installed in build image)
           if go-licenses csv ./... | grep -iE 'GPL|AGPL|LGPL'; then
             echo "ERROR: Copyleft license detected!"
             exit 1
@@ -5766,11 +5797,11 @@ set -euo pipefail
 
 echo "Checking for incompatible licenses..."
 
-# Install go-licenses if not present
-if ! command -v go-licenses &> /dev/null; then
-    echo "Installing go-licenses..."
-    go install github.com/google/go-licenses@latest
-fi
+# Require go-licenses — never install inline. It is pre-installed in docker/Dockerfile.build.
+command -v go-licenses >/dev/null 2>&1 || {
+    echo "ERROR: go-licenses not found — run inside the project build image (docker/Dockerfile.build)"
+    exit 1
+}
 
 # Check for copyleft licenses
 echo "Scanning dependencies..."
@@ -5805,15 +5836,13 @@ echo "3. Commit the changes"
 
 This badge should appear in the badges section near the top of README.md.
 
-## Docker Labels (REQUIRED)
+## Docker Annotations (REQUIRED)
 
-**Dockerfile MUST include license label:**
+**License metadata is applied as an OCI annotation at build time — no LABEL in Dockerfile:**
 
-```dockerfile
-LABEL org.opencontainers.image.licenses="MIT"
-```
+Pass `--annotation "org.opencontainers.image.licenses=MIT"` to `docker buildx build`.
 
-See PART 27: DOCKER for complete label requirements.
+See PART 27: DOCKER for complete annotation requirements.
 
 ## Go Module License Field
 
@@ -6009,12 +6038,16 @@ PROJECTORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+(
 ./                          # Root project directory (git top-level)
 ├── .github/                # GitHub Actions (if using GitHub)
 │   └── workflows/
+│       ├── ci.yml          # Build, test, lint, coverage, security jobs
+│       ├── build-toolchain.yml  # Monthly :build toolchain image rebuild
 │       ├── release.yml     # Stable releases
 │       ├── beta.yml        # Beta releases
 │       ├── daily.yml       # Daily builds
 │       └── docker.yml      # Docker images
 ├── .gitea/                 # Gitea Actions (if using Gitea)
 │   └── workflows/
+│       ├── ci.yml          # Build, test, lint, coverage, security jobs
+│       ├── build-toolchain.yml  # Monthly :build toolchain image rebuild
 │       ├── release.yml     # Stable releases
 │       ├── beta.yml        # Beta releases
 │       ├── daily.yml       # Daily builds
@@ -6091,7 +6124,8 @@ PROJECTORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+(
 │   └── incus.sh            # Beta testing with Incus (REQUIRED)
 ├── docker/                 # Docker files
 │   ├── Dockerfile          # Production Dockerfile
-│   ├── Dockerfile.dev      # Development Dockerfile (optional)
+│   ├── Dockerfile.dev      # devel image — same as release but binary runs in debug mode; tagged :devel (project-specific)
+│   ├── Dockerfile.build    # toolchain image — golang:alpine + all build/test/lint/scan tools; built monthly; tagged :build   (project-specific)
 │   ├── docker-compose.yml  # Production compose (NO debug)
 │   ├── docker-compose.dev.yml  # Development compose
 │   ├── docker-compose.test.yml # Test compose (DEBUG=true)
@@ -17436,17 +17470,48 @@ server:
 
 ## Rate Limiting
 
+Rate limiting is the primary abuse defense. All limits are per-IP using a sliding window counter stored in `server.db`.
+
 ```yaml
 server:
   rate_limit:
     enabled: true
-    # Requests allowed per window (0 = use project default from IDEA.md)
-    requests: 0
-    # Window size in seconds
-    window: 60
+    read:
+      requests: 120    # per minute per IP
+      window: 60
+    write:
+      requests: 10     # per minute per IP
+      window: 60
+    health:
+      requests: 120    # per minute per IP (health/status endpoints)
+      window: 60
+    global_burst: 240  # per minute per IP (absolute ceiling across all endpoint types)
+    # Auth endpoints — stricter limits, applied independently of the general limits above
+    auth:
+      login:
+        requests: 5
+        window: 900    # 15 minutes
+      password_reset:
+        requests: 3
+        window: 3600   # 1 hour
+      registration:
+        requests: 5
+        window: 3600   # 1 hour
 ```
 
-**Note:** Each project defines its own default rate limit in IDEA.md based on expected usage patterns.
+| Endpoint class | Default limit | Window | Notes |
+|----------------|---------------|--------|-------|
+| Read (GET, HEAD) | 120 req/min | 60s | Per IP, sliding window |
+| Write (POST, PUT, PATCH, DELETE) | 10 req/min | 60s | Per IP, sliding window |
+| Health / status | 120 req/min | 60s | `/healthz`, `/readyz`, `/livez` |
+| Global burst | 240 req/min | 60s | Absolute ceiling across all types |
+| Login | 5 req / 15 min | 900s | Per IP + per identifier |
+| Password reset | 3 req / 1 hr | 3600s | Per IP, no email hint on exceed |
+| Registration | 5 req / 1 hr | 3600s | Per IP |
+
+**Response when limited:** `429 Too Many Requests` with `Retry-After` header set to seconds until the window resets. Body: `{"ok":false,"error":"RATE_LIMITED","message":"Too many requests","retry_after":N}`.
+
+**Note:** All limits are configurable under `server.rate_limit.*` in `server.yml` and via the admin panel.
 
 ## Internationalization (i18n)
 
@@ -36701,7 +36766,8 @@ PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 win
 
 # Docker - Set REGISTRY based on your platform (ghcr.io, registry.gitlab.com, git.example.com)
 REGISTRY ?= ghcr.io/$(PROJECTORG)/$(PROJECTNAME)
-GO_DOCKER := docker run --rm \
+GO_DOCKER := docker run --rm -it \
+	--name $(PROJECTNAME)-$$(tr -dc 'a-z0-9' </dev/urandom | head -c8) \
 	-v $(PWD):/build \
 	-v $(GOCACHE):/root/.cache/go-build \
 	-v $(GODIR):/go \
@@ -36905,7 +36971,7 @@ dev:
 			$(GO_DOCKER) go build -o $$BUILD_DIR/$(PROJECTNAME)-agent ./src/agent && \
 			echo "Built: $$BUILD_DIR/$(PROJECTNAME)-agent"; \
 		fi && \
-		echo "Test:  docker run --rm -v $$BUILD_DIR:/app alpine:latest /app/$(PROJECTNAME) --help"
+		echo "Test:  docker run --rm -it --name $(PROJECTNAME)-test -v $$BUILD_DIR:/app alpine:latest /app/$(PROJECTNAME) --help"
 
 # =============================================================================
 # CLEAN - Remove build artifacts
@@ -37043,6 +37109,7 @@ All Docker builds use persistent Go module caching to avoid re-downloading depen
 # After make dev, test in Docker with debug tools
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-*/ 2>/dev/null | head -1)
 docker run --rm -it \
+  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v "$BUILD_DIR:/app" \
   alpine:latest sh -c "
     apk add --no-cache curl bash file jq
@@ -37265,7 +37332,8 @@ Docker build/runtime definitions are split between `docker/` and runtime `./volu
 ```
 docker/
 ├── Dockerfile              # Production Dockerfile
-├── Dockerfile.dev          # Development Dockerfile (optional)
+├── Dockerfile.dev          # devel image — same as release but binary runs in debug mode; tagged :devel (project-specific)
+├── Dockerfile.build        # toolchain image — golang:alpine + all build/test/lint/scan tools; built monthly; tagged :build   (project-specific)
 ├── docker-compose.yml      # Production compose - HUMAN USE ONLY
 ├── docker-compose.dev.yml  # Development compose - HUMAN USE ONLY
 ├── docker-compose.test.yml # Test compose - AI/AUTOMATED TESTING ONLY
@@ -37417,28 +37485,36 @@ All Dockerfiles MUST include these labels:
 | `org.opencontainers.image.vcs-type` | `Git` |
 | `com.github.containers.toolbox` | `false` |
 
-### Multi-Arch Manifest Annotations
+### Multi-Arch Image Annotations
 
-**For multi-arch images, OCI labels MUST also be set as manifest annotations.**
+**All image metadata is applied as OCI annotations — no LABEL blocks in the Dockerfile.**
 
-Container registries (GHCR, Docker Hub, etc.) read metadata from the manifest index for multi-arch images, not from individual image configs. Without manifest annotations, registry pages show no description.
+Container registries (GHCR, Docker Hub, etc.) read metadata from the manifest index for multi-arch images, not from individual image configs. `LABEL` applies only to per-platform image layers and is not visible on multiarch pulls. Only annotations are used.
 
 | Where | How | What For |
 |-------|-----|----------|
-| Dockerfile `LABEL` | Image config | Single-arch images, `docker inspect` |
-| Workflow `labels:` | Image config | Per-architecture metadata |
-| Workflow `annotations:` | Manifest index | Registry display, multi-arch images |
+| Workflow `annotations:` | Manifest index | All image metadata — registry display, multiarch |
 
-**The `manifest:` prefix tells buildx to apply annotations to the manifest list:**
+**Apply annotations via `docker/metadata-action` in GitHub Actions:**
 
 ```yaml
-annotations: |
-  manifest:org.opencontainers.image.description=My app description
-  manifest:org.opencontainers.image.title=myapp
-  manifest:org.opencontainers.image.version=1.0.0
+- uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6.0.0
+  id: meta
+  with:
+    images: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
+    annotations: |
+      org.opencontainers.image.description={project_name} description
+      org.opencontainers.image.title={project_name}
+      org.opencontainers.image.licenses=MIT
+
+- uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
+  with:
+    annotations: ${{ steps.meta.outputs.annotations }}
+    labels: ""
+    tags: ${{ steps.meta.outputs.tags }}
 ```
 
-See the docker.yml workflow for the complete list of required annotations.
+See dockerfile_conventions.md → OCI Annotations for the complete list of required annotation keys.
 
 ### Dockerfile Rules
 
@@ -37492,25 +37568,11 @@ ARG BUILD_DATE
 ARG COMMIT_ID
 ARG LICENSE=MIT
 
-# Static Labels
-LABEL maintainer="{maintainer_name} <{maintainer_email}>" \
-      org.opencontainers.image.vendor="{project_org}" \
-      org.opencontainers.image.authors="{project_org}" \
-      org.opencontainers.image.title="{project_name}" \
-      org.opencontainers.image.base.name="{project_name}" \
-      org.opencontainers.image.description="{project_name} - standard image (alpine)" \
-      org.opencontainers.image.url="{PLATFORM_REPO_URL}" \
-      org.opencontainers.image.source="{PLATFORM_REPO_URL}" \
-      org.opencontainers.image.documentation="{PLATFORM_REPO_URL}" \
-      org.opencontainers.image.vcs-type="Git" \
-      com.github.containers.toolbox="false"
-
-# Dynamic Labels (from ARGs)
-LABEL org.opencontainers.image.licenses="${LICENSE}" \
-      org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.schema-version="${VERSION}" \
-      org.opencontainers.image.revision="${COMMIT_ID}"
+# No LABEL blocks — all image metadata is applied as OCI annotations at build time.
+# Pass --annotation flags to docker buildx build (or use docker/metadata-action
+# annotations: output in GitHub Actions). Annotations attach to the manifest index
+# and are visible on multiarch pulls. LABEL applies only to per-platform layers.
+# See dockerfile_conventions.md → OCI Annotations.
 
 # Install required packages
 # NOTE: Tor binary installed but NOT configured here - binary handles all Tor setup (see PART 32)
@@ -38031,9 +38093,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # =============================================================================
 FROM debian:latest
 
-LABEL org.opencontainers.image.source="{PLATFORM_REPO_URL}"
-LABEL org.opencontainers.image.description="{project_name} - all-in-one (debian + postgresql + valkey + tor)"
-LABEL org.opencontainers.image.licenses="MIT"
+# No LABEL blocks — image metadata applied as OCI annotations at build time.
 
 # Install dependencies (PostgreSQL + Valkey + Tor + Supervisor)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -38810,10 +38870,12 @@ networks:
 
 | File | Trigger | Purpose |
 |------|---------|---------|
+| `ci.yml` | Push, PR to default branch; security jobs also run on weekly cron | Build + test + lint + coverage + secret scanning + image scanning + workflow-policy |
 | `release.yml` | Tag push (`v*`, `*.*.*`) | Production releases |
 | `beta.yml` | Push to `beta` branch | Beta releases |
 | `daily.yml` | Daily at 3am UTC + push to main/master | Daily builds |
 | `docker.yml` | Version tag, push to main/master/beta | Docker images |
+| `build-toolchain.yml` | Monthly cron (1st @ 04:00 UTC) + `workflow_dispatch` | Rebuild and push `docker/Dockerfile.build` as `:build` |
 
 **Branch push auto-cancel policy:** Any workflow triggered by pushes to `main`, `master`, `devel`, `dev`, or `beta` MUST use workflow concurrency to cancel older in-progress runs for the same ref. This applies to branch-based CI (for example `beta.yml`, `daily.yml`, `docker.yml`, and any project-specific branch-push workflow).
 
@@ -38830,6 +38892,160 @@ All workflows MUST set these environment variables:
 #   echo "BUILD_DATE=$(date +"%a %b %d, %Y at %H:%M:%S %Z")" >> $GITHUB_ENV
 # Then use in build step:
 #   LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildDate=${{ env.BUILD_DATE }}' -X 'main.OfficialSite=${{ env.OFFICIALSITE }}'"
+```
+
+## CI Workflow (GitHub Actions)
+
+**File:** `.github/workflows/ci.yml`
+
+Runs on push and pull requests; security jobs (`secret-scan`, `workflow-policy`, `vuln-scan`, `image-scan`) also run on the weekly schedule. Uses the project's toolchain image (`docker/Dockerfile.build`) — never installs tools inline. The `ensure-build-image` job is the gate: every downstream job `needs: ensure-build-image` and runs inside `${{ needs.ensure-build-image.outputs.image }}`.
+
+CI workflows pull the toolchain image — they never build it inline. If the image is absent, `ensure-build-image` fails immediately with an actionable error pointing the operator to `build-toolchain.yml`.
+
+**Bootstrap order** — when adding `docker/Dockerfile.build` for the first time: commit only `docker/Dockerfile.build` → trigger `build-toolchain.yml` via `workflow_dispatch` → verify image in registry → then commit `ci.yml` and `release.yml`.
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ensure-build-image:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+    outputs:
+      image: ${{ steps.pull.outputs.image }}
+    steps:
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: pull
+        name: Pull build image (fail fast if missing)
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:build"
+          if ! docker pull "$IMAGE"; then
+            echo "::error::Build image $IMAGE not found."
+            echo "::error::Trigger the 'Build Toolchain Image' workflow (workflow_dispatch) to create it."
+            echo "::error::Never commit ci.yml or release.yml before the build image exists in the registry."
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  lint:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - run: go vet ./...
+      - run: staticcheck ./...
+
+  test:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - run: go test -cover -coverprofile=coverage.out ./...
+      - name: Enforce coverage threshold
+        run: |
+          THRESHOLD=60
+          PCT=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print int($3)}')
+          if [ "$PCT" -lt "$THRESHOLD" ]; then
+            echo "::error::coverage $PCT% < threshold $THRESHOLD%"
+            exit 1
+          fi
+
+  build:
+    needs: [ensure-build-image, lint, test]
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - run: go build ./...
+
+  vuln-check:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - run: govulncheck ./...
+
+  # Additional jobs (same pattern — needs: ensure-build-image):
+  # secret-scan, workflow-policy, image-scan (needs: build), coverage (needs: test), upload-artifacts (needs: build)
+```
+
+> **Note:** Security jobs (`secret-scan`, `workflow-policy`, `vuln-scan`, `image-scan`) are defined within `ci.yml` with `needs: ensure-build-image`. They run on push, PR, and weekly schedule (`cron: '0 6 * * 1'`). Add `if: github.event_name != 'schedule'` to build/test/coverage/artifact jobs to skip non-security work on scheduled runs. Secret scanning is mandatory on every public repo via truffleHog (Apache-2.0). Use `github.event.before` / `github.event.after` for the scan range — never `default_branch`, which after a push resolves to the same commit as HEAD and silently skips the scan.
+
+## Build Toolchain Workflow (GitHub Actions)
+
+**File:** `.github/workflows/build-toolchain.yml`
+
+Builds and pushes the toolchain image tagged `:build`. Runs monthly so the toolchain stays current; also runnable on demand via `workflow_dispatch`. Push must NOT be cancelled mid-run — `cancel-in-progress: false`.
+
+```yaml
+name: Build Toolchain Image
+
+on:
+  schedule:
+    - cron: '0 4 1 * *'   # 1st of each month at 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a  # v4.0.0
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
+
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
+        with:
+          context: .
+          file: docker/Dockerfile.build
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:build
 ```
 
 ## Release Workflow — Stable (GitHub Actions)
@@ -38856,9 +39072,35 @@ env:
   PROJECTNAME: {project_name}
 
 jobs:
-  build:
+  ensure-build-image:
     runs-on: ubuntu-latest
-    container: golang:alpine
+    permissions:
+      packages: read
+    outputs:
+      image: ${{ steps.pull.outputs.image }}
+    steps:
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: pull
+        name: Pull build image (fail fast if missing)
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:build"
+          if ! docker pull "$IMAGE"; then
+            echo "::error::Build image $IMAGE not found."
+            echo "::error::Trigger the 'Build Toolchain Image' workflow (workflow_dispatch) to create it."
+            echo "::error::Never commit ci.yml or release.yml before the build image exists in the registry."
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
     strategy:
       matrix:
         include:
@@ -38882,7 +39124,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set build info
         run: |
@@ -38922,14 +39164,14 @@ jobs:
           go build -ldflags "${LDFLAGS}" -o ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       - name: Upload CLI artifact
         if: hashFiles('src/client/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -38947,7 +39189,7 @@ jobs:
 
       - name: Upload Agent artifact
         if: hashFiles('src/agent/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -38959,10 +39201,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: binaries
           merge-multiple: true
@@ -38991,7 +39233,7 @@ jobs:
             -czf binaries/${{ env.PROJECTNAME }}-${{ env.VERSION }}-source.tar.gz .
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           files: binaries/*
@@ -39022,9 +39264,35 @@ env:
   PROJECTNAME: {project_name}
 
 jobs:
-  build:
+  ensure-build-image:
     runs-on: ubuntu-latest
-    container: golang:alpine
+    permissions:
+      packages: read
+    outputs:
+      image: ${{ steps.pull.outputs.image }}
+    steps:
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: pull
+        name: Pull build image (fail fast if missing)
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:build"
+          if ! docker pull "$IMAGE"; then
+            echo "::error::Build image $IMAGE not found."
+            echo "::error::Trigger the 'Build Toolchain Image' workflow (workflow_dispatch) to create it."
+            echo "::error::Never commit ci.yml or release.yml before the build image exists in the registry."
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
     strategy:
       matrix:
         include:
@@ -39048,7 +39316,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set build info
         run: |
@@ -39088,14 +39356,14 @@ jobs:
           go build -ldflags "${LDFLAGS}" -o ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       - name: Upload CLI artifact
         if: hashFiles('src/client/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -39113,7 +39381,7 @@ jobs:
 
       - name: Upload Agent artifact
         if: hashFiles('src/agent/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -39125,10 +39393,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: binaries
           merge-multiple: true
@@ -39145,7 +39413,7 @@ jobs:
         run: echo "${{ env.VERSION }}" > binaries/version.txt
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           tag_name: ${{ env.VERSION }}
           files: binaries/*
@@ -39180,9 +39448,35 @@ env:
   PROJECTNAME: {project_name}
 
 jobs:
-  build:
+  ensure-build-image:
     runs-on: ubuntu-latest
-    container: golang:alpine
+    permissions:
+      packages: read
+    outputs:
+      image: ${{ steps.pull.outputs.image }}
+    steps:
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: pull
+        name: Pull build image (fail fast if missing)
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:build"
+          if ! docker pull "$IMAGE"; then
+            echo "::error::Build image $IMAGE not found."
+            echo "::error::Trigger the 'Build Toolchain Image' workflow (workflow_dispatch) to create it."
+            echo "::error::Never commit ci.yml or release.yml before the build image exists in the registry."
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
     strategy:
       matrix:
         include:
@@ -39206,7 +39500,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set build info
         run: |
@@ -39246,14 +39540,14 @@ jobs:
           go build -ldflags "${LDFLAGS}" -o ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       - name: Upload CLI artifact
         if: hashFiles('src/client/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -39271,7 +39565,7 @@ jobs:
 
       - name: Upload Agent artifact
         if: hashFiles('src/agent/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -39283,10 +39577,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: binaries
           merge-multiple: true
@@ -39310,7 +39604,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           tag_name: daily
           name: "Daily Build ${{ env.VERSION }}"
@@ -39373,26 +39667,26 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a  # v4.0.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.GITEA_TOKEN }}
 
       - name: Set build info
         run: |
           echo "COMMIT_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "YYMM=$(date +"%y%m")" >> $GITHUB_ENV
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ gitea.ref }}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
             echo "VERSION=${VERSION#v}" >> $GITHUB_ENV
             echo "IS_TAG=true" >> $GITHUB_ENV
@@ -39413,7 +39707,7 @@ jobs:
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.YYMM }}"
           else
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:devel"
-            if [[ "${{ github.ref }}" == refs/heads/beta ]]; then
+            if [[ "${{ gitea.ref }}" == refs/heads/beta ]]; then
               TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:beta"
             fi
           fi
@@ -39421,7 +39715,7 @@ jobs:
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Build and push (standard)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
         with:
           context: .
           file: docker/Dockerfile
@@ -39441,9 +39735,9 @@ jobs:
             org.opencontainers.image.version=${{ env.VERSION }}
             org.opencontainers.image.created=${{ env.BUILD_DATE }}
             org.opencontainers.image.revision=${{ env.COMMIT_ID }}
-            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=${{ gitea.server_url }}/${{ gitea.repository }}
+            org.opencontainers.image.source=${{ gitea.server_url }}/${{ gitea.repository }}
+            org.opencontainers.image.documentation=${{ gitea.server_url }}/${{ gitea.repository }}
             org.opencontainers.image.licenses=MIT
           annotations: |
             manifest:org.opencontainers.image.vendor={project_org}
@@ -39454,9 +39748,9 @@ jobs:
             manifest:org.opencontainers.image.version=${{ env.VERSION }}
             manifest:org.opencontainers.image.created=${{ env.BUILD_DATE }}
             manifest:org.opencontainers.image.revision=${{ env.COMMIT_ID }}
-            manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
-            manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}
+            manifest:org.opencontainers.image.url=${{ gitea.server_url }}/${{ gitea.repository }}
+            manifest:org.opencontainers.image.source=${{ gitea.server_url }}/${{ gitea.repository }}
+            manifest:org.opencontainers.image.documentation=${{ gitea.server_url }}/${{ gitea.repository }}
             manifest:org.opencontainers.image.licenses=MIT
 
   build-aio:
@@ -39466,26 +39760,26 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a  # v4.0.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.GITEA_TOKEN }}
 
       - name: Set build info
         run: |
           echo "COMMIT_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "YYMM=$(date +"%y%m")" >> $GITHUB_ENV
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ gitea.ref }}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
             echo "VERSION=${VERSION#v}" >> $GITHUB_ENV
             echo "IS_TAG=true" >> $GITHUB_ENV
@@ -39508,7 +39802,7 @@ jobs:
             TAGS="$TAGS,${IMAGE}:${{ env.YYMM }}-aio"
           else
             TAGS="$TAGS,${IMAGE}:devel-aio"
-            if [[ "${{ github.ref }}" == refs/heads/beta ]]; then
+            if [[ "${{ gitea.ref }}" == refs/heads/beta ]]; then
               TAGS="$TAGS,${IMAGE}:beta-aio"
             fi
           fi
@@ -39516,7 +39810,7 @@ jobs:
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Build and push (all-in-one)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
         with:
           context: .
           file: docker/Dockerfile.aio
@@ -39535,9 +39829,9 @@ jobs:
             org.opencontainers.image.version=${{ env.VERSION }}
             org.opencontainers.image.created=${{ env.BUILD_DATE }}
             org.opencontainers.image.revision=${{ env.COMMIT_ID }}
-            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=${{ gitea.server_url }}/${{ gitea.repository }}
+            org.opencontainers.image.source=${{ gitea.server_url }}/${{ gitea.repository }}
+            org.opencontainers.image.documentation=${{ gitea.server_url }}/${{ gitea.repository }}
             org.opencontainers.image.licenses=MIT
           annotations: |
             manifest:org.opencontainers.image.vendor={project_org}
@@ -39547,9 +39841,9 @@ jobs:
             manifest:org.opencontainers.image.version=${{ env.VERSION }}
             manifest:org.opencontainers.image.created=${{ env.BUILD_DATE }}
             manifest:org.opencontainers.image.revision=${{ env.COMMIT_ID }}
-            manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
-            manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}
+            manifest:org.opencontainers.image.url=${{ gitea.server_url }}/${{ gitea.repository }}
+            manifest:org.opencontainers.image.source=${{ gitea.server_url }}/${{ gitea.repository }}
+            manifest:org.opencontainers.image.documentation=${{ gitea.server_url }}/${{ gitea.repository }}
             manifest:org.opencontainers.image.licenses=MIT
 ```
 
@@ -39612,6 +39906,8 @@ For self-hosted runners, change `runs-on: ubuntu-latest` to your runner label.
 
 | File | Trigger | Purpose |
 |------|---------|---------|
+| `ci.yml` | Push and pull requests; weekly schedule for security jobs | Build, test, lint, coverage, security jobs |
+| `build-toolchain.yml` | Monthly schedule + `workflow_dispatch` | `:build` toolchain image rebuild |
 | `release.yml` | Tag push (`v*`, `*.*.*`) | Production releases |
 | `beta.yml` | Push to `beta` branch | Beta releases |
 | `daily.yml` | Daily at 3am UTC + push to main/master | Daily builds |
@@ -39641,9 +39937,35 @@ env:
   PROJECTNAME: {project_name}
 
 jobs:
-  build:
+  ensure-build-image:
     runs-on: ubuntu-latest
-    container: golang:alpine
+    permissions:
+      packages: read
+    outputs:
+      image: ${{ steps.pull.outputs.image }}
+    steps:
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ${{ vars.REGISTRY }}
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.GITEA_TOKEN }}
+      - id: pull
+        name: Pull build image (fail fast if missing)
+        run: |
+          IMAGE="${{ vars.REGISTRY }}/${{ gitea.repository_owner }}/${{ gitea.event.repository.name }}:build"
+          if ! docker pull "$IMAGE"; then
+            echo "::error::Build image $IMAGE not found."
+            echo "::error::Trigger the 'Build Toolchain Image' workflow (workflow_dispatch) to create it."
+            echo "::error::Never commit ci.yml or release.yml before the build image exists in the registry."
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
     strategy:
       matrix:
         include:
@@ -39667,7 +39989,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set build info
         run: |
@@ -39707,14 +40029,14 @@ jobs:
           go build -ldflags "${LDFLAGS}" -o ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       - name: Upload CLI artifact
         if: hashFiles('src/client/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -39732,7 +40054,7 @@ jobs:
 
       - name: Upload Agent artifact
         if: hashFiles('src/agent/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -39744,10 +40066,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: binaries
           merge-multiple: true
@@ -39776,7 +40098,7 @@ jobs:
             -czf binaries/${{ env.PROJECTNAME }}-${{ env.VERSION }}-source.tar.gz .
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           files: binaries/*
@@ -39807,9 +40129,35 @@ env:
   PROJECTNAME: {project_name}
 
 jobs:
-  build:
+  ensure-build-image:
     runs-on: ubuntu-latest
-    container: golang:alpine
+    permissions:
+      packages: read
+    outputs:
+      image: ${{ steps.pull.outputs.image }}
+    steps:
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ${{ vars.REGISTRY }}
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.GITEA_TOKEN }}
+      - id: pull
+        name: Pull build image (fail fast if missing)
+        run: |
+          IMAGE="${{ vars.REGISTRY }}/${{ gitea.repository_owner }}/${{ gitea.event.repository.name }}:build"
+          if ! docker pull "$IMAGE"; then
+            echo "::error::Build image $IMAGE not found."
+            echo "::error::Trigger the 'Build Toolchain Image' workflow (workflow_dispatch) to create it."
+            echo "::error::Never commit ci.yml or release.yml before the build image exists in the registry."
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
     strategy:
       matrix:
         include:
@@ -39819,7 +40167,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set build info
         run: |
@@ -39859,14 +40207,14 @@ jobs:
           go build -ldflags "${LDFLAGS}" -o ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       - name: Upload CLI artifact
         if: hashFiles('src/client/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -39884,7 +40232,7 @@ jobs:
 
       - name: Upload Agent artifact
         if: hashFiles('src/agent/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -39896,10 +40244,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: binaries
           merge-multiple: true
@@ -39916,7 +40264,7 @@ jobs:
         run: echo "${{ env.VERSION }}" > binaries/version.txt
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           tag_name: ${{ env.VERSION }}
           files: binaries/*
@@ -39951,9 +40299,35 @@ env:
   PROJECTNAME: {project_name}
 
 jobs:
-  build:
+  ensure-build-image:
     runs-on: ubuntu-latest
-    container: golang:alpine
+    permissions:
+      packages: read
+    outputs:
+      image: ${{ steps.pull.outputs.image }}
+    steps:
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ${{ vars.REGISTRY }}
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.GITEA_TOKEN }}
+      - id: pull
+        name: Pull build image (fail fast if missing)
+        run: |
+          IMAGE="${{ vars.REGISTRY }}/${{ gitea.repository_owner }}/${{ gitea.event.repository.name }}:build"
+          if ! docker pull "$IMAGE"; then
+            echo "::error::Build image $IMAGE not found."
+            echo "::error::Trigger the 'Build Toolchain Image' workflow (workflow_dispatch) to create it."
+            echo "::error::Never commit ci.yml or release.yml before the build image exists in the registry."
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: ensure-build-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-build-image.outputs.image }}
     strategy:
       matrix:
         include:
@@ -39977,7 +40351,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set build info
         run: |
@@ -40017,14 +40391,14 @@ jobs:
           go build -ldflags "${LDFLAGS}" -o ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       - name: Upload CLI artifact
         if: hashFiles('src/client/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -40042,7 +40416,7 @@ jobs:
 
       - name: Upload Agent artifact
         if: hashFiles('src/agent/') != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECTNAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -40054,10 +40428,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: binaries
           merge-multiple: true
@@ -40082,7 +40456,7 @@ jobs:
           git push origin :refs/tags/daily 2>/dev/null || true
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           tag_name: daily
           name: "Daily Build ${{ env.VERSION }}"
@@ -40124,13 +40498,13 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a  # v4.0.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
 
       - name: Set registry from server URL
         run: |
@@ -40142,7 +40516,7 @@ jobs:
           echo "REGISTRY=${REGISTRY}" >> $GITEA_ENV
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ gitea.actor }}
@@ -40186,7 +40560,7 @@ jobs:
           echo "tags=$TAGS" >> $GITEA_OUTPUT
 
       - name: Build and push (standard)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
         with:
           context: .
           file: docker/Dockerfile
@@ -40231,13 +40605,13 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a  # v4.0.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
 
       - name: Set registry from server URL
         run: |
@@ -40247,7 +40621,7 @@ jobs:
           echo "REGISTRY=${REGISTRY}" >> $GITEA_ENV
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ gitea.actor }}
@@ -40288,7 +40662,7 @@ jobs:
           echo "tags=$TAGS" >> $GITEA_OUTPUT
 
       - name: Build and push (all-in-one)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
         with:
           context: .
           file: docker/Dockerfile.aio
@@ -40394,6 +40768,10 @@ variables:
   CGO_ENABLED: "0"
   GOOS: linux
   GOARCH: amd64
+  # Toolchain image — pre-installs every build/test/lint/scan tool the project uses.
+  # Tools MUST live in docker/Dockerfile.build, not inline `apk add` / `go install` calls.
+  # $CI_REGISTRY_IMAGE resolves to the project registry path automatically on every GitLab instance.
+  BUILD_IMAGE: "$CI_REGISTRY_IMAGE:build"
 
 stages:
   - build
@@ -40407,9 +40785,10 @@ stages:
 # =============================================================================
 
 .go-build-template: &go-build
-  image: golang:alpine
+  image: $BUILD_IMAGE
   before_script:
-    - apk add --no-cache git bash
+    # NOTE: all tooling (git, bash, govulncheck, cyclonedx-gomod, etc.) is pre-installed
+    # in docker/Dockerfile.build — never `apk add` or `go install` inside a CI job.
     - export VERSION="${CI_COMMIT_TAG#v}"
     - export COMMIT_ID="${CI_COMMIT_SHORT_SHA}"
     - export BUILD_DATE="$(date +"%a %b %d, %Y at %H:%M:%S %Z")"
@@ -41021,7 +41400,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41038,7 +41418,8 @@ pipeline {
                     agent { label 'arm64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41056,7 +41437,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41073,7 +41455,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41091,7 +41474,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41108,7 +41492,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41126,7 +41511,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41143,7 +41529,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41169,7 +41556,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41186,7 +41574,8 @@ pipeline {
                     agent { label 'arm64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41203,7 +41592,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41220,7 +41610,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41237,7 +41628,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41254,7 +41646,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41271,7 +41664,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41288,7 +41682,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41314,7 +41709,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41331,7 +41727,8 @@ pipeline {
                     agent { label 'arm64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41348,7 +41745,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41365,7 +41763,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41382,7 +41781,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41399,7 +41799,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41416,7 +41817,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41433,7 +41835,8 @@ pipeline {
                     agent { label 'amd64' }
                     steps {
                         sh '''
-                            docker run --rm \
+                            docker run --rm -it \
+                                --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/build \
                                 -v ${GOCACHE}:/root/.cache/go-build \
                                 -v ${GODIR}:/go \
@@ -41453,7 +41856,8 @@ pipeline {
             agent { label 'amd64' }
             steps {
                 sh '''
-                    docker run --rm \
+                    docker run --rm -it \
+                        --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                         -v ${WORKSPACE}:/build \
                         -v ${GOCACHE}:/root/.cache/go-build \
                         -v ${GODIR}:/go \
@@ -41767,7 +42171,7 @@ When a test or debug step requires `reboot`, `systemctl`, `iptables`, `mount`, p
 | Test Need | Run It Where |
 |-----------|--------------|
 | Test systemd service install/start/stop | `incus exec test-{project_name} -- systemctl ...` |
-| Test firewall integration | `docker run --rm --cap-add=NET_ADMIN ...` |
+| Test firewall integration | `docker run --rm -it --name "{project_name}-test" --cap-add=NET_ADMIN ...` |
 | Test network interface behavior | `ip netns exec {ns} ...` or inside Incus |
 | Test package install / dependency setup | Inside the build container or test container |
 | Test reboot / service restart behavior | `incus restart test-{project_name}` |
@@ -42327,16 +42731,16 @@ make test
 test:
   runs-on: ubuntu-latest
   steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
     - name: Run tests with coverage
       run: |
-        docker run --rm -v $(pwd):/build -w /build golang:alpine \
+        docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $(pwd):/build -w /build golang:alpine \
           go test -cover -coverprofile=coverage.out ./...
 
     - name: Check coverage is 100%
       run: |
-        COVERAGE=$(docker run --rm -v $(pwd):/build -w /build golang:alpine \
+        COVERAGE=$(docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $(pwd):/build -w /build golang:alpine \
           go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
         if [ $(echo "$COVERAGE < 100" | bc -l) -eq 1 ]; then
           echo "ERROR: Coverage is $COVERAGE%, must be 100%"
@@ -42511,7 +42915,7 @@ verify_all_endpoints_tested
 # 1. Build in Docker (always use Docker for builds)
 mkdir -p "${TMPDIR:-/tmp}/${PROJECT_ORG}"
 BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX")
-docker run --rm -v $(pwd):/build -w /build -e CGO_ENABLED=0 \
+docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $(pwd):/build -w /build -e CGO_ENABLED=0 \
   golang:alpine go build -o /build/binaries/{project_name} ./src
 
 # 2. Test (prefer Incus, fallback to Docker)
@@ -42529,7 +42933,7 @@ if command -v incus &>/dev/null; then
 else
   # FALLBACK: Quick test in Docker (alpine, no systemd)
   echo "Incus not available, testing with Docker..."
-  docker run --rm -v $(pwd)/binaries:/app alpine:latest \
+  docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $(pwd)/binaries:/app alpine:latest \
     /app/{project_name} --help
 fi
 ```
@@ -42601,7 +43005,8 @@ GOCACHE="${HOME}/.local/share/go/build"
 mkdir -p "$GODIR" "$GOCACHE"
 
 # Common docker run for Go builds
-GO_DOCKER="docker run --rm \
+GO_DOCKER="docker run --rm -it \
+  --name \"${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)\" \
   -v $(pwd):/build \
   -v ${GOCACHE}:/root/.cache/go-build \
   -v ${GODIR}:/go \
@@ -42625,7 +43030,8 @@ if [ -d "src/agent" ]; then
 fi
 
 echo "Testing in Docker (Alpine)..."
-docker run --rm \
+docker run --rm -it \
+  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v "$BUILD_DIR:/app" \
   alpine:latest sh -c "
     set -e
@@ -42848,7 +43254,8 @@ GOCACHE="${HOME}/.local/share/go/build"
 mkdir -p "$GODIR" "$GOCACHE"
 
 # Common docker run for Go builds
-GO_DOCKER="docker run --rm \
+GO_DOCKER="docker run --rm -it \
+  --name \"${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)\" \
   -v $(pwd):/build \
   -v ${GOCACHE}:/root/.cache/go-build \
   -v ${GODIR}:/go \
@@ -43343,7 +43750,8 @@ GOCACHE="${HOME}/.local/share/go/build"
 mkdir -p "$GODIR" "$GOCACHE"
 
 # Common docker run for Go commands
-GO_DOCKER="docker run --rm \
+GO_DOCKER="docker run --rm -it \
+  --name \"${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)\" \
   -v $PROJECT_PATH:/build \
   -v $GOCACHE:/root/.cache/go-build \
   -v $GODIR:/go \
@@ -43373,6 +43781,7 @@ $GO_DOCKER golang:alpine go vet ./...
 
 # Interactive shell (for debugging)
 docker run --rm -it \
+  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v $PROJECT_PATH:/build \
   -v $GOCACHE:/root/.cache/go-build \
   -v $GODIR:/go \
@@ -43391,7 +43800,8 @@ GOCACHE="${HOME}/.local/share/go/build"
 mkdir -p "$GODIR" "$GOCACHE"
 
 # Build (with caching)
-docker run --rm \
+docker run --rm -it \
+  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v $(pwd):/build \
   -v $GOCACHE:/root/.cache/go-build \
   -v $GODIR:/go \
@@ -43399,7 +43809,7 @@ docker run --rm \
   golang:alpine go build -o /build/binaries/{project_name} ./src
 
 # Test in Docker (quick) - install tools first
-docker run --rm -v $(pwd)/binaries:/app alpine:latest sh -c "
+docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $(pwd)/binaries:/app alpine:latest sh -c "
   apk add --no-cache curl bash file jq >/dev/null
   /app/{project_name} --help
 "
@@ -43426,7 +43836,8 @@ TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX")
 mkdir -p $TEST_DIR/{config,data,logs}
 
 # Build to binaries/ (with caching)
-docker run --rm \
+docker run --rm -it \
+  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v $(pwd):/build \
   -v $GOCACHE:/root/.cache/go-build \
   -v $GODIR:/go \
@@ -43434,14 +43845,15 @@ docker run --rm \
   golang:alpine go build -o /build/binaries/{project_name} ./src
 
 # Quick test in Docker (install tools first)
-docker run --rm -v $(pwd)/binaries:/app alpine:latest sh -c "
+docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $(pwd)/binaries:/app alpine:latest sh -c "
   apk add --no-cache curl bash file jq >/dev/null
   /app/{project_name} --help
   /app/{project_name} --version
 "
 
 # Full test with config/data in Docker
-docker run --rm \
+docker run --rm -it \
+  --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v $(pwd)/binaries:/app \
   -v $TEST_DIR:/test \
   alpine:latest /app/{project_name} \
@@ -43464,7 +43876,7 @@ TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX")
 mkdir -p $TEST_DIR/{config,data,logs}
 
 # Build
-docker run --rm -v $(pwd):/build -w /build -e CGO_ENABLED=0 \
+docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $(pwd):/build -w /build -e CGO_ENABLED=0 \
   golang:alpine go build -o /build/binaries/{project_name} ./src
 
 # Launch Incus container (use latest Debian stable)
@@ -59153,6 +59565,8 @@ make docker # Build Docker image
 - [ ] Volume mounts for config/data
 
 **PART 28: CI/CD Workflows**
+- [ ] `.github/workflows/ci.yml` — build, test, lint, coverage, and all security jobs
+- [ ] `.github/workflows/build-toolchain.yml` — monthly `:build` toolchain image rebuild
 - [ ] release.yml - Stable releases
 - [ ] beta.yml - Beta releases
 - [ ] daily.yml - Nightly builds
@@ -59613,14 +60027,14 @@ make docker # Build Docker image
 - [ ] `tini` as init process (PID 1)
 - [ ] Runs as root (app manages user/permissions at runtime)
 - [ ] HEALTHCHECK instruction present
-- [ ] OCI labels (org.opencontainers.image.*)
+- [ ] OCI annotations (org.opencontainers.image.*) — applied at build time via `--annotation` flags, NOT via Dockerfile `LABEL`
 - [ ] No secrets in image layers
 - [ ] Minimal image size
 
 ### Docker Compose Files
 
 - [ ] `docker-compose.yml` - Production deployment
-- [ ] `docker-compose.dev.yml` - Development (hot reload)
+- [ ] `docker-compose.dev.yml` - Development (runs `:devel` image in debug mode; no hot-reload — source is compiled into the image)
 - [ ] `docker-compose.test.yml` - Testing
 - [ ] Volume mounts for `/config` and `/data`
 - [ ] Proper network configuration
@@ -59640,6 +60054,8 @@ make docker # Build Docker image
 
 ### Workflow Files
 
+- [ ] `ci.yml` — build, test, lint, coverage, and all security jobs
+- [ ] `build-toolchain.yml` — monthly `:build` toolchain image rebuild
 - [ ] `release.yml` - Stable releases (tag trigger)
 - [ ] `beta.yml` - Beta releases (branch trigger)
 - [ ] `daily.yml` - Nightly builds (cron + push)
@@ -60425,6 +60841,8 @@ Implement the required client, then any project-specific optional features:
 
 - [ ] Docker builds successfully
 - [ ] Docker Compose files work (prod, dev, test)
+- [ ] `docker/Dockerfile.build` base is the official toolchain image (`golang:alpine`); committed first before any CI workflow
+- [ ] `build-toolchain.yml` triggered via `workflow_dispatch`; build image verified in registry before committing `ci.yml`/`release.yml`
 - [ ] CI/CD workflows configured
 - [ ] Automated builds work
 - [ ] Multi-platform builds work (8 platforms)
